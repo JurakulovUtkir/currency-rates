@@ -85,12 +85,12 @@ export class TaskServiceService {
     //     }
     // }
 
-    @Cron(CronExpression.EVERY_SECOND)
-    async every_second() {
-        const date = new Date();
-        // await this.bot.telegram.sendMessage(1411561011, 'Hello Utkir');
-        console.log(date.toLocaleString());
-    }
+    // @Cron(CronExpression.EVERY_SECOND)
+    // async every_second() {
+    //     const date = new Date();
+    //     // await this.bot.telegram.sendMessage(1411561011, 'Hello Utkir');
+    //     console.log(date.toLocaleString());
+    // }
 
     escapeHtml(s: string) {
         return s
