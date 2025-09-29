@@ -1,0 +1,38 @@
+# Node dependencies
+node_modules
+npm-debug.log
+yarn.lock
+
+# Build output
+dist
+coverage
+*.tsbuildinfo
+
+# Runtime folders
+uploads
+assets
+logs
+.tmp
+.cache
+
+# Docker-specific
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Git
+.git
+.gitignore
+
+# Env files
+.env
+.env.*
+
+# Editor/IDE
+.vscode
+.idea
+*.swp
+
+# OS-specific
+.DS_Store
+Thumbs.db

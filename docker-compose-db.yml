@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+    postgres:
+        container_name: rates-postgres
+        image: postgres:latest
+        env_file: .env
+        environment:
+            POSTGRES_DB: ${DB_NAME}
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - postgres_data:/var/lib/postgresql/data # Persistent volume
+        ports:
+            - '${DB_PORT}:5432' # Tashqi port 5999, ichki port 5432
+        networks:
+            - app_network
+        restart: unless-stopped
+
+networks:
+    app_network:
+        driver: bridge # Custom network for communication between services
+
+volumes:
+    postgres_data: # Persistent volume for PostgreSQL data

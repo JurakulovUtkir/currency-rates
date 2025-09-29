@@ -1,0 +1,24 @@
+export enum Currency {
+    USD = 'usd',
+    EUR = 'eur',
+    RUB = 'rub',
+}
+
+export enum Bank {
+    CBU = 'MARKAZIY BANK',
+    ALOQABANK = 'ALOQABANK',
+    ANORBANK = 'ANORBANK',
+    DAVRBANK = 'DAVRBANK',
+    GARANTBANK = 'GARANTBANK',
+    IPAKYULIBANK = 'IPAK YOLI BANK',
+    IPOTEKABANK = 'IPOTEKABANK',
+    KDB = 'KDB BANK',
+    NBU = 'MILLIY BANK',
+    OCTOBANK = 'OCTOBANK',
+    PAYTAXTBANK = 'POYTAXTBANK',
+    AGROBANK = 'AGROBANK',
+    BRB = 'BRB',
+    TENGBANK = 'TENGBANK',
+    HAYOTBANK = 'HAYOTBANK',
+    HAMKORBANK = 'HAMKORBANK',
+}
