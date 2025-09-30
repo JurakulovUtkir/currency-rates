@@ -310,7 +310,7 @@ export async function generateRatesImageAllCurrencies(
             ctx.textAlign = 'right';
             ctx.fillStyle = THEMES[theme].textDim;
             ctx.font = '14px Arial, sans-serif';
-            ctx.fillText('so'm', x + cardW - 18, labelY + 22);
+            ctx.fillText(`so'm`, x + cardW - 18, labelY + 22);
         }
 
         y += rows * cardH + (rows - 1) * gridGap + 28;

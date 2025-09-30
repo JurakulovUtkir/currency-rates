@@ -47,12 +47,3 @@ export async function fetchTengeBankRates(): Promise<TengeBankResponse> {
         throw error; // Rethrow the error for further handling
     }
 }
-
-// Example usage:
-fetchTengeBankRates()
-    .then((data) => {
-        console.log('TengeBank Data:', data);
-    })
-    .catch((error) => {
-        console.error('Error loading TengeBank rates:', error);
-    });

@@ -40,12 +40,3 @@ export async function getCurrencyRatesFromBrb(): Promise<CurrencyData[]> {
         throw error; // Rethrow error for further handling
     }
 }
-
-// Example usage:
-getCurrencyRatesFromBrb()
-    .then((data) => {
-        console.log('Currency data:', data);
-    })
-    .catch((error) => {
-        console.error('Error fetching currency rates:', error);
-    });
