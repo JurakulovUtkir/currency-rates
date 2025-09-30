@@ -99,7 +99,6 @@ export class TaskServiceService {
             .replace(/>/g, '&gt;');
     }
 
-    @Cron(CronExpression.EVERY_HOUR)
     async every_minutes() {
         const chatId = this.telegram_channel_id;
 
@@ -179,13 +178,28 @@ export class TaskServiceService {
             const htmlPre = escapeHtml(tableText);
             const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
 
-            await this.bot.telegram.sendMessage(chatId, textMessage, {
-                parse_mode: 'HTML',
-                disable_web_page_preview: true,
-            });
+            // await this.bot.telegram.sendMessage(chatId, textMessage, {
+            //     parse_mode: 'HTML',
+            //     disable_web_page_preview: true,
+            // });
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }
+    }
+
+    @Cron(CronExpression.EVERY_DAY_AT_1PM)
+    async every_day_at_1pm() {
+        await this.every_minutes();
+    }
+
+    @Cron(CronExpression.EVERY_DAY_AT_9AM)
+    async every_day_at_9am() {
+        await this.every_minutes();
+    }
+
+    @Cron(CronExpression.EVERY_DAY_AT_4PM)
+    async every_day_at_4pm() {
+        await this.every_minutes();
     }
 
     async loading_banks() {
