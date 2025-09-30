@@ -103,7 +103,7 @@ export async function generateRatesImageAllCurrencies(
 
     const {
         width = 1000,
-        title = 'Актуальные курсы (все валюты)',
+        title = 'Amaldagi kurslar (barcha valyutalar)',
         outputDir = path.resolve(process.cwd(), 'images'),
         fileNamePrefix = 'rates-all',
         format = 'png',
@@ -233,7 +233,11 @@ export async function generateRatesImageAllCurrencies(
             ctx.textAlign = 'center';
             ctx.fillStyle = 'rgba(255,255,255,0.9)';
             ctx.font = 'bold 13px Arial, sans-serif';
-            ctx.fillText(`Курс ЦБ ${ccy}`, cbuX + cbuCardW / 2, cbuY + 20);
+            ctx.fillText(
+                `Markaziy bank kursi ${ccy}`,
+                cbuX + cbuCardW / 2,
+                cbuY + 20,
+            );
 
             const cbuBuy = num(bucket.cbu.buy);
             const cbuSell = num(bucket.cbu.sell);
@@ -241,7 +245,7 @@ export async function generateRatesImageAllCurrencies(
             ctx.fillStyle = '#fbbf24';
             ctx.font = 'bold 20px Arial, sans-serif';
             ctx.fillText(
-                `${Math.round(cbuRate).toLocaleString()} сум`,
+                `${Math.round(cbuRate).toLocaleString()} so'm`,
                 cbuX + cbuCardW / 2,
                 cbuY + 42,
             );
@@ -282,8 +286,8 @@ export async function generateRatesImageAllCurrencies(
 
             ctx.fillStyle = THEMES[theme].textDim;
             ctx.font = 'bold 12px Arial, sans-serif';
-            ctx.fillText('ПОКУПКА', x + 20, labelY);
-            ctx.fillText('ПРОДАЖА', col2, labelY);
+            ctx.fillText('SOTIB OLISH', x + 20, labelY);
+            ctx.fillText('SOTISH', col2, labelY);
 
             const buy = num(banks[i].buy);
             const sell = num(banks[i].sell);
@@ -306,7 +310,7 @@ export async function generateRatesImageAllCurrencies(
             ctx.textAlign = 'right';
             ctx.fillStyle = THEMES[theme].textDim;
             ctx.font = '14px Arial, sans-serif';
-            ctx.fillText('сум', x + cardW - 18, labelY + 22);
+            ctx.fillText('so'm', x + cardW - 18, labelY + 22);
         }
 
         y += rows * cardH + (rows - 1) * gridGap + 28;
