@@ -17,4 +17,5 @@ export enum scenes {
     ADD_CHANNEL = 'ADD_CHANNEL',
     UYDA_TALIM = 'UYDA_TALIM',
     RESULT_SCENE = 'RESULT_SCENE',
+    PASSWORD = 'PASSWORD',
 }

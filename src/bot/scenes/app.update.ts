@@ -1,11 +1,12 @@
 import { Injectable, Logger, UseInterceptors } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { On, Start, Update } from 'nestjs-telegraf';
+import { Public } from 'src/auth/decorators/is-public.decorator';
 import { User } from 'src/users/entities/user.entity';
 import { Repository } from 'typeorm';
 import { Context } from '../context/context';
 import { BotInterceptor } from '../interceptor/interceptor';
-import { Public } from 'src/auth/decorators/is-public.decorator';
+import { scenes } from '../utils/scenes';
 
 @Update()
 @Injectable()
@@ -22,6 +23,9 @@ export class AppUpdate {
     async start(ctx: Context) {
         const user = await this.getUser(ctx);
         await ctx.reply(`Welcome ${user.full_name}`);
+
+        // going to password scene
+        await ctx.scene.enter(scenes.PASSWORD);
     }
 
     async getUser(ctx: Context): Promise<User> {
