@@ -202,6 +202,11 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
+    @Cron(CronExpression.EVERY_4_HOURS)
+    async every_day_at_sometime() {
+        await this.every_minutes();
+    }
+
     async loading_banks() {
         // load cbu
         await this.loading_cbu();
