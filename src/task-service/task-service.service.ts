@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as dotenv from 'dotenv';
-import { InjectBot } from 'nestjs-telegraf';
 import * as fs from 'fs';
+import { InjectBot } from 'nestjs-telegraf';
 import * as path from 'path';
 import { Context } from 'src/bot/context/context';
 import { getAgrobankExchangeRates } from 'src/rates/agrobank';
@@ -747,6 +747,7 @@ export class TaskServiceService {
                 });
 
                 if (existingUsd) {
+                    usdData.buy = existingUsd.buy;
                     await this.ratesRepository.update(existingUsd.id, usdData);
                 } else {
                     await this.ratesRepository.save(usdData);
