@@ -1,87 +1,54 @@
-// asakabank.client.ts
+// src/rates/asakabank.axios.ts
 import axios from 'axios';
-import { Agent as HttpAgent } from 'node:http';
-import { Agent as HttpsAgent } from 'node:https';
+import * as https from 'node:https';
 
-const URL = 'https://back.asakabank.uz/core/v1/currency-list/';
+const sanitize = (v: string) => v.replace(/[^\u0020-\u007E]/g, '');
 
-export type AsakaCurrencyType = 1 | 2;
-
-export interface AsakaApiItem {
-    id: number;
-    name: string;
-    short_name: string;
-    rate_cb: string;
-    purchase: string;
-    different_purchase: string;
-    sale: string;
-    different_sale: string;
-    code: string;
-    currency_type: AsakaCurrencyType;
-    currency_type_name: 'Individual' | 'Corporate';
-    order: number;
-    modified_date: string;
-    created_date: string;
+export interface AsakaAxiosOpts {
+    cookie?: string;
+    page?: number;
+    pageSize?: number;
+    baseUrl?: string;
+    timeoutMs?: number;
+    maxRedirects?: number;
 }
-export interface AsakaApiResponse {
-    links: { next: string | null; previous: string | null };
-    count: number;
-    page: number;
-    page_size: number;
-    results: AsakaApiItem[];
-}
-export type NormalizedAsaka = {
-    id: number;
-    name: string;
-    alpha: string;
-    code: string;
-    type: 'Individual' | 'Corporate';
-    typeId: AsakaCurrencyType;
-    cbu: number | null;
-    buy: number | null;
-    sell: number | null;
-    modifiedAt: string;
-    createdAt: string;
-};
 
-const toNum = (s?: string | null) => {
-    if (s == null) return null;
-    const n = Number(String(s).replace(/\s+/g, '').replace(',', '.'));
-    return Number.isFinite(n) ? n : null;
-};
-const fixAlpha = (a: string) =>
-    a?.toUpperCase() === 'GRB' ? 'GBP' : a?.toUpperCase() ?? '';
+export async function fetchAsakaCurrencyListAxios({
+    cookie = 'cookiesession1=678A8C6B80159488256C708715C83290',
+    page = 1,
+    pageSize = 20,
+    baseUrl = 'https://back.asakabank.uz/core/v1',
+    timeoutMs = 12_000,
+    maxRedirects = 5,
+}: AsakaAxiosOpts = {}): Promise<unknown> {
+    const agent = new https.Agent({ keepAlive: true });
 
-export async function fetchAsakaRatesOnceAxios(): Promise<{
-    raw: AsakaApiItem[];
-    normalized: NormalizedAsaka[];
-}> {
-    const res = await axios.get<AsakaApiResponse>(URL, {
+    const client = axios.create({
+        baseURL: baseUrl,
+        timeout: timeoutMs,
+        maxRedirects,
+        decompress: true,
+        httpAgent: agent,
+        httpsAgent: agent,
         headers: {
-            Accept: 'application/json',
-            'User-Agent': 'rates-bot/1.0 (+https://vaqt.uz)',
+            'User-Agent': 'PostmanRuntime/7.40.0',
+            Accept: 'application/json, text/plain, */*',
+            'Accept-Encoding': 'gzip, deflate, br',
+            Cookie: sanitize(cookie),
+            Connection: 'close',
         },
-        timeout: 12_000,
-        validateStatus: (s) => s >= 200 && s < 400,
-        httpAgent: new HttpAgent({ keepAlive: true }),
-        httpsAgent: new HttpsAgent({ keepAlive: true }),
-        responseType: 'json',
+        // don't auto-throw on non-2xx; we handle it below
+        validateStatus: () => true,
+        transitional: { forcedJSONParsing: false }, // keep raw text if server mislabels content-type
     });
 
-    const raw = Array.isArray(res.data?.results) ? res.data.results : [];
-    const normalized: NormalizedAsaka[] = raw.map((r) => ({
-        id: r.id,
-        name: r.name,
-        alpha: fixAlpha(r.short_name),
-        code: r.code,
-        type: r.currency_type_name,
-        typeId: r.currency_type,
-        cbu: toNum(r.rate_cb),
-        buy: toNum(r.purchase),
-        sell: toNum(r.sale),
-        modifiedAt: r.modified_date,
-        createdAt: r.created_date,
-    }));
+    const url = `/currency-list/?page=${page}&page_size=${pageSize}`;
+    const res = await client.get(url, { insecureHTTPParser: true as any });
 
-    return { raw, normalized };
+    if (res.status < 200 || res.status >= 300) {
+        const body =
+            typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+        throw new Error(`HTTP ${res.status}: ${body.slice(0, 500)}`);
+    }
+    return res.data;
 }

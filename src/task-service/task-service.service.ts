@@ -9,7 +9,7 @@ import { Context } from 'src/bot/context/context';
 import { getAgrobankExchangeRates } from 'src/rates/agrobank';
 import { getAlokabankExchangeRates } from 'src/rates/aloqabank';
 import { getExchangeRatesFromAnorbank } from 'src/rates/anorbank';
-import { fetchAsakaRatesOnceAxios } from 'src/rates/asakabank';
+import { fetchAsakaCurrencyListAxios } from 'src/rates/asakabank';
 import { getCurrencyRatesFromBrb } from 'src/rates/BRB';
 import { fetchCbuRates } from 'src/rates/cbu';
 import { getDavrbankRates } from 'src/rates/davrbank';
@@ -207,6 +207,17 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
+    //only for testing
+    @Cron(CronExpression.EVERY_30_SECONDS)
+    async every_30_seconds() {
+        console.log(Date.now().toLocaleString());
+
+        // const data = await fetchAsakaCurrencyListAxios();
+        // console.log(JSON.parse(data + ''));
+
+        await this.loading_asakabank();
+    }
+
     async loading_banks() {
         // load cbu
         await this.loading_cbu();
@@ -236,7 +247,7 @@ export class TaskServiceService {
 
         await this.loading_agrobank();
 
-        // await this.loading_asakabank(); // bunda request qilganida muammo bo'ldi // manimcha header da origin qilib o'zini saytini berish kerak
+        await this.loading_asakabank(); // bunda request qilganida muammo bo'ldi // manimcha header da origin qilib o'zini saytini berish kerak
 
         await this.loading_brb();
 
@@ -1050,9 +1061,83 @@ export class TaskServiceService {
         }
     }
 
+    // Inside your service (has this.ratesRepository, Bank, Currency)
     async loading_asakabank() {
-        const data = await fetchAsakaRatesOnceAxios();
-        console.log(data);
+        try {
+            const res = await fetchAsakaCurrencyListAxios({
+                cookie: process.env.ASAKABANK_COOKIE || '',
+                page: 1,
+                pageSize: 50,
+            });
+
+            // Ensure JSON shape: { results: [...] }
+            const json =
+                typeof res === 'string' ? JSON.parse(res) : (res as any);
+            const rows: any[] = Array.isArray(json?.results)
+                ? json.results
+                : [];
+
+            // Keep only "Individual" (currency_type === 1)
+            const indiv = rows.filter(
+                (r) =>
+                    r?.currency_type === 1 ||
+                    String(r?.currency_type_name).toLowerCase() ===
+                        'individual',
+            );
+
+            const toNum = (v: unknown): number | null => {
+                const n = Number(String(v).replace(',', '.'));
+                return Number.isFinite(n) ? n : null;
+            };
+
+            // Normalize one row -> {currencyAlphaCode, buy, sell, cbu}
+            const norm = (r: any) => ({
+                currencyAlphaCode: String(r?.short_name ?? '').toUpperCase(), // e.g. USD, EUR, RUB
+                buy: toNum(r?.purchase),
+                sell: toNum(r?.sale),
+                cbu: toNum(r?.rate_cb),
+            });
+
+            // Finder by alpha
+            const pick = (alpha: string) =>
+                indiv.map(norm).find((x) => x.currencyAlphaCode === alpha);
+
+            const processCurrency = async (
+                rate: ReturnType<typeof norm> | undefined,
+                currency: string,
+            ) => {
+                if (!rate) return;
+                const buyNum = rate.buy ?? rate.cbu;
+                const sellNum = rate.sell ?? rate.cbu;
+                if (buyNum == null && sellNum == null) return;
+
+                const data = {
+                    currency,
+                    bank: Bank.ASAKABANK,
+                    buy: buyNum != null ? String(buyNum) : null,
+                    sell: sellNum != null ? String(sellNum) : null,
+                } as const;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency,
+                    bank: Bank.ASAKABANK,
+                });
+
+                if (existing) {
+                    await this.ratesRepository.update(existing.id, data);
+                } else {
+                    await this.ratesRepository.save(data);
+                }
+            };
+
+            await processCurrency(pick('USD'), Currency.USD);
+            await processCurrency(pick('EUR'), Currency.EUR);
+            await processCurrency(pick('RUB'), Currency.RUB);
+
+            console.log('Asakabank (Individual) rates saved: USD/EUR/RUB');
+        } catch (error) {
+            console.error('Error loading Asakabank rates:', error);
+        }
     }
 
     async loading_brb() {
