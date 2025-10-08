@@ -22,4 +22,6 @@ export enum Bank {
     HAYOTBANK = 'HAYOTBANK',
     HAMKORBANK = 'HAMKORBANK',
     ASAKABANK = 'ASAKABANK',
+    INFINBANK = 'INFINBANK',
+    MKBANK = 'MKBANK',
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as dotenv from 'dotenv';
@@ -16,7 +16,9 @@ import { getDavrbankRates } from 'src/rates/davrbank';
 import { getGarantBankExchangeRates } from 'src/rates/garant.bank';
 import { fetchHamkorbankRates } from 'src/rates/hamkorbank';
 import { fetchHayotBankRates } from 'src/rates/hayotbank';
+import { fetchInfinbankOfficeRates } from 'src/rates/infinbank';
 import { getKdbExchangeRates } from 'src/rates/kdb.bank';
+import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
@@ -37,6 +39,8 @@ export class TaskServiceService {
         @InjectRepository(Rate)
         private readonly ratesRepository: Repository<Rate>,
     ) {}
+
+    private logger = new Logger();
 
     private getBackupCommand(filePath: string): string {
         const host = process.env.DB_HOST || 'genix-postgres'; // Change 'db' to your PostgreSQL service name in Docker
@@ -207,16 +211,16 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    //only for testing
-    @Cron(CronExpression.EVERY_30_SECONDS)
-    async every_30_seconds() {
-        console.log(Date.now().toLocaleString());
+    // //only for testing
+    // @Cron(CronExpression.EVERY_30_SECONDS)
+    // async every_30_seconds() {
+    //     console.log(Date.now().toLocaleString());
 
-        // const data = await fetchAsakaCurrencyListAxios();
-        // console.log(JSON.parse(data + ''));
+    //     // const data = await fetchAsakaCurrencyListAxios();
+    //     // console.log(JSON.parse(data + ''));
 
-        await this.loading_asakabank();
-    }
+    //     await this.loading_mkbank();
+    // }
 
     async loading_banks() {
         // load cbu
@@ -256,6 +260,10 @@ export class TaskServiceService {
         await this.loading_hayotbank();
 
         await this.loading_hamkorbank();
+
+        await this.loading_infinbank();
+
+        await this.loading_mkbank();
     }
 
     async loading_cbu() {
@@ -1355,6 +1363,110 @@ export class TaskServiceService {
             console.log('Currency rates updated successfully from Hamkorbank');
         } catch (error) {
             console.error('Error loading Hamkorbank rates:', error);
+        }
+    }
+
+    async loading_infinbank() {
+        try {
+            const { office } = await fetchInfinbankOfficeRates();
+
+            const upsert = async (
+                k: 'usd' | 'eur' | 'gbp' | 'rub' | 'jpy' | 'chf',
+                currency: Currency,
+            ) => {
+                const row = office[k];
+                if (!row) return;
+
+                const data = {
+                    currency,
+                    bank: Bank.INFINBANK,
+                    buy: row.buy != null ? String(row.buy) : null,
+                    sell: row.sell != null ? String(row.sell) : null,
+                } as const;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency,
+                    bank: Bank.INFINBANK,
+                });
+
+                if (existing) {
+                    await this.ratesRepository.update(
+                        { id: existing.id },
+                        data,
+                    );
+                } else {
+                    await this.ratesRepository.insert(data);
+                }
+            };
+
+            await Promise.all([
+                upsert('usd', Currency.USD),
+                upsert('eur', Currency.EUR),
+                // upsert('gbp', Currency.GBP),
+                upsert('rub', Currency.RUB),
+                // upsert('jpy', Currency.JPY),
+                // upsert('chf', Currency.CHF),
+            ]);
+
+            this.logger?.log?.('INFINBANK updated');
+        } catch (error) {
+            this.logger.log(error);
+        }
+    }
+
+    async loading_mkbank() {
+        try {
+            const { office, source, officeDateISO } =
+                await fetchMkbankOfficeRates();
+
+            const upsertOne = async (alpha: Currency) => {
+                const key = alpha.toLowerCase() as keyof typeof office;
+                const row = office[key];
+                if (!row) return;
+
+                // Prefer bank buy/sell; fallback to CBU if missing
+                const buyNum = row.buy ?? row.cbu ?? null;
+                const sellNum = row.sell ?? row.cbu ?? null;
+                if (buyNum == null && sellNum == null) return;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency: alpha,
+                    bank: Bank.MKBANK,
+                });
+
+                const payload: Partial<Rate> = {
+                    currency: alpha,
+                    bank: Bank.MKBANK,
+                    buy: buyNum != null ? String(buyNum) : null,
+                    sell: sellNum != null ? String(sellNum) : null,
+                };
+
+                if (existing) {
+                    await this.ratesRepository.update(existing.id, payload);
+                } else {
+                    await this.ratesRepository.save(
+                        this.ratesRepository.create(payload),
+                    );
+                }
+            };
+
+            await Promise.all([
+                upsertOne(Currency.USD),
+                upsertOne(Currency.EUR),
+                // upsertOne(Currency.GBP),
+                // upsertOne(Currency.JPY),
+                // upsertOne(Currency.CHF),
+            ]);
+
+            // Optional: quick debug log
+            this.logger?.log?.({
+                bank: Bank.MKBANK,
+                source,
+                officeDateISO,
+                office,
+            });
+        } catch (err) {
+            this.logger?.error?.('loading_mkbank failed', err);
         }
     }
 }
