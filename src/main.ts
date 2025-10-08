@@ -31,7 +31,9 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
 
-    // log some data from asakabank
+    // // log some data from asakabank
+    // const data = await getNbuExchangeRates();
+    // console.log(data);
 
     await app.listen(process.env.PORT);
 }
