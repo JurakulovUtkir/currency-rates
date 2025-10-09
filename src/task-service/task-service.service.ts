@@ -179,8 +179,8 @@ export class TaskServiceService {
             }
 
             // ======= 2) Send TEXT message (HTML + <pre>) =======
-            const htmlPre = escapeHtml(tableText);
-            const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
+            // const htmlPre = escapeHtml(tableText);
+            // const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
 
             // await this.bot.telegram.sendMessage(chatId, textMessage, {
             //     parse_mode: 'HTML',
@@ -191,18 +191,18 @@ export class TaskServiceService {
         }
     }
 
-    @Cron(CronExpression.EVERY_DAY_AT_1PM)
-    async every_day_at_1pm() {
+    @Cron('10 13 * * *', { timeZone: 'Asia/Tashkent' }) // 1:10 PM
+    async every_day_at_1pm_plus10() {
         await this.every_minutes();
     }
 
-    @Cron(CronExpression.EVERY_DAY_AT_9AM)
-    async every_day_at_9am() {
+    @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
+    async every_day_at_9am_plus10() {
         await this.every_minutes();
     }
 
-    @Cron(CronExpression.EVERY_DAY_AT_4PM)
-    async every_day_at_4pm() {
+    @Cron('10 16 * * *', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
+    async every_day_at_4pm_plus10() {
         await this.every_minutes();
     }
 
@@ -211,16 +211,11 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    // //only for testing
-    // @Cron(CronExpression.EVERY_30_SECONDS)
-    // async every_30_seconds() {
-    //     console.log(Date.now().toLocaleString());
-
-    //     // const data = await fetchAsakaCurrencyListAxios();
-    //     // console.log(JSON.parse(data + ''));
-
-    //     await this.loading_mkbank();
-    // }
+    //only for testing
+    @Cron(CronExpression.EVERY_MINUTE)
+    async every_30_seconds() {
+        await this.every_minutes();
+    }
 
     async loading_banks() {
         // load cbu
@@ -1215,7 +1210,7 @@ export class TaskServiceService {
                 if (currencyData) {
                     const data = {
                         currency,
-                        bank: Bank.TENGBANK, // Assuming TENGBANK is a value in the Bank enum
+                        bank: Bank.TENGEBANK, // Assuming TENGEBANK is a value in the Bank enum
                         buy: currencyData.buy.toString(), // Ensure the rate is a string
                         sell: currencyData.sell.toString(),
                     };
@@ -1223,7 +1218,7 @@ export class TaskServiceService {
                     const existingCurrency =
                         await this.ratesRepository.findOneBy({
                             currency,
-                            bank: Bank.TENGBANK,
+                            bank: Bank.TENGEBANK,
                         });
 
                     if (existingCurrency) {
