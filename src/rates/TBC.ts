@@ -1,96 +1,83 @@
-// tbcbank.ts
-import { CheerioAPI, load } from 'cheerio';
+// src/rates/tbcbank.ts — robust to TBC’s mislabeled “Sotish/MB kursi” blocks
+import { load } from 'cheerio';
 import { fetch } from 'undici';
 
-type Code = 'USD' | 'EUR' | 'GBP' | 'RUB' | 'JPY' | 'CHF' | 'KZT';
-type LCode = Lowercase<Code>;
-
-export interface TbcCell {
-    buy: number | null;
-    sell: number | null;
-}
-export interface TbcResult {
+export type OfficeRates = Record<
+    string,
+    { buy: number | null; sell: number | null }
+>;
+export interface TbcBankResult {
     bank: 'TBCBANK';
     source: string;
     fetchedAt: string;
-    office: Partial<Record<LCode, TbcCell>>;
+    office: OfficeRates;
 }
 
-const URL = 'https://tbcbank.uz/uz/currency/';
-
-const toNum = (t: string): number | null => {
-    const s = t.replace(/\s+/g, '').replace(',', '.').replace(' ', '').trim();
-    if (!s || s === '-' || s === '—') return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? Math.round(n) : null; // they display integers anyway
+const SOURCE = 'https://tbcbank.uz/uz/currency/';
+const toNum = (raw: string): number | null => {
+    const c = raw
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s+/g, '')
+        .replace(',', '.')
+        .replace(/[^\d.]/g, '');
+    const n = c ? Number(c) : NaN;
+    return Number.isFinite(n) ? n : null;
 };
-
-const detectCode = (raw: string): Code | null => {
-    const t = raw.toUpperCase();
-    if (/\bUSD\b|AQSH|DOLLAR/.test(t)) return 'USD';
-    if (/\bEUR\b|EVRO|YEVRO/.test(t)) return 'EUR';
-    if (/\bGBP\b|FUNT|STERLING/.test(t)) return 'GBP';
-    if (/\bRUB\b|RUBL/.test(t)) return 'RUB';
-    if (/\bJPY\b|IYENA|IENA|YENA/.test(t)) return 'JPY';
-    if (/\bCHF\b|FRANK/.test(t)) return 'CHF';
-    if (/\bKZT\b|TENGE/.test(t)) return 'KZT';
+const isoFromHrefOrText = (href?: string, text = ''): string | null => {
+    const fromHref = href
+        ?.match(/\/currency\/([a-z]{3})\//i)?.[1]
+        ?.toUpperCase();
+    if (fromHref) return fromHref;
+    const t = text.toUpperCase();
+    if (/AQSH\s*DOLLARI|USD/.test(t)) return 'USD';
+    if (/EVRO|ЕВРО|EUR/.test(t)) return 'EUR';
+    if (/RUBL|RUB/.test(t)) return 'RUB';
+    if (/FUNT|GBP/.test(t)) return 'GBP';
+    if (/YEN|ИЕНА|JPY/.test(t)) return 'JPY';
+    if (/FRANKI|CHF/.test(t)) return 'CHF';
+    if (/YUAN|ЮАНЬ|CNY/.test(t)) return 'CNY';
     return null;
 };
 
-/**
- * Scrapes https://tbcbank.uz/uz/currency/ and returns Buy/Sell for each currency.
- */
-export async function fetchTbcBankRates(): Promise<TbcResult> {
-    const res = await fetch(URL, {
-        headers: {
-            'user-agent': 'Mozilla/5.0',
-            accept: 'text/html,application/xhtml+xml',
-        },
+export async function fetchTbcBankOfficeRates(
+    source = SOURCE,
+): Promise<TbcBankResult> {
+    const res = await fetch(source, {
+        headers: { 'accept-language': 'uz,ru;q=0.9,en;q=0.8' },
     });
     if (!res.ok)
-        throw new Error(`TBC Bank HTTP ${res.status} ${res.statusText}`);
-
+        throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
     const html = await res.text();
-    const $: CheerioAPI = load(html);
+    const $ = load(html);
 
-    // Find the main rates table (there's typically one on the page)
-    const table = $('table').first();
-    const headCells = table
-        .find('thead tr')
-        .first()
-        .find('th')
-        .toArray()
-        .map((th) => $(th).text().trim());
+    const office: OfficeRates = {};
+    $('.currency__list-body .body-item').each((_i, item) => {
+        const $item = $(item);
+        const $a = $item.find('.rates-title a').first();
+        const iso = isoFromHrefOrText($a.attr('href'), $a.text().trim());
+        if (!iso) return;
 
-    // Determine column indexes by header text (Uzbek labels)
-    const colIdx = (needle: RegExp) =>
-        headCells.findIndex((h) => needle.test(h.toLowerCase()));
+        // Collect numbers in visual order: [buy, x, y] where x/y are (sell, CBU) but labels may be swapped.
+        const nums: number[] = [];
+        $item.find('.rate').each((_k, r) => {
+            const v = toNum($(r).text());
+            if (v != null) nums.push(v);
+        });
+        if (nums.length < 3) return;
 
-    const currencyIdx = 0; // first column is currency name
-    const buyIdx = colIdx(/sotib\s*olish|buy/);
-    const sellIdx = colIdx(/sotish|sell/);
+        const buy = nums[0];
+        // Heuristic: SELL is the larger of the remaining two; CBU is the other (matches your screenshot: 12190 > 12 123,38).
+        const rest = nums.slice(1, 3);
+        const sell = Math.max(rest[0], rest[1]);
 
-    if (buyIdx < 0 || sellIdx < 0) {
-        throw new Error('Could not detect Buy/Sell columns on TBC page');
-    }
-
-    const office: Partial<Record<LCode, TbcCell>> = {};
-    table.find('tbody tr').each((_, tr) => {
-        const tds = $(tr).find('td');
-        if (!tds.length) return;
-
-        const curText = $(tds.get(currencyIdx)).text().trim();
-        const code = detectCode(curText);
-        if (!code) return;
-
-        const buy = toNum($(tds.get(buyIdx)).text());
-        const sell = toNum($(tds.get(sellIdx)).text());
-        office[code.toLowerCase() as LCode] = { buy, sell };
+        office[iso.toLowerCase()] = { buy, sell };
     });
 
+    if (!Object.keys(office).length)
+        throw new Error('TBC: no currency rows matched.');
     return {
         bank: 'TBCBANK',
-        source: URL,
+        source,
         fetchedAt: new Date().toISOString(),
         office,
     };

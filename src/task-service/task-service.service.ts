@@ -22,6 +22,7 @@ import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
+import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
 import { fetchTengeBankRates } from 'src/rates/tengebank';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
 import { Bank, Currency } from 'src/rates/utils/enums';
@@ -106,13 +107,13 @@ export class TaskServiceService {
     async every_minutes() {
         const chatId = this.telegram_channel_id;
 
-        const escapeHtml = (s: string) =>
-            String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+        // const escapeHtml = (s: string) =>
+        //     String(s)
+        //         .replace(/&/g, '&amp;')
+        //         .replace(/</g, '&lt;')
+        //         .replace(/>/g, '&gt;')
+        //         .replace(/"/g, '&quot;')
+        //         .replace(/'/g, '&#39;');
 
         const fmt = (v: unknown) => {
             const n = Number(v);
@@ -128,8 +129,8 @@ export class TaskServiceService {
             });
 
             // Build monospace table (for <pre>)
-            const header = `Bank name                 | Sell / Buy`;
-            const sep = `----------------------------------------`;
+            // const header = `Bank name                 | Sell / Buy`;
+            // const sep = `----------------------------------------`;
             const rows: string[] = [];
 
             for (const r of usdRates ?? []) {
@@ -141,9 +142,9 @@ export class TaskServiceService {
                 rows.push(`${bankCell} |\t ${sell} / ${buy}`);
             }
 
-            const tableText = usdRates?.length
-                ? `${header}\n${sep}\n${rows.join('\n')}`
-                : `No USD data available yet.`;
+            // const tableText = usdRates?.length
+            //     ? `${header}\n${sep}\n${rows.join('\n')}`
+            //     : `No USD data available yet.`;
 
             // ======= 1) Send PHOTO generated from rates via canvas =======
             try {
@@ -211,10 +212,10 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    //only for testing
-    // @Cron(CronExpression.EVERY_MINUTE)
+    // // only for testing
+    // @Cron(CronExpression.EVERY_30_SECONDS)
     // async every_30_seconds() {
-    //     await this.every_minutes();
+    //     await this.loading_tbc();
     // }
 
     async loading_banks() {
@@ -259,6 +260,8 @@ export class TaskServiceService {
         await this.loading_infinbank();
 
         await this.loading_mkbank();
+
+        await this.loading_tbc();
     }
 
     async loading_cbu() {
@@ -1462,6 +1465,57 @@ export class TaskServiceService {
             });
         } catch (err) {
             this.logger?.error?.('loading_mkbank failed', err);
+        }
+    }
+
+    async loading_tbc() {
+        try {
+            const { office, source, fetchedAt } =
+                await fetchTbcBankOfficeRates();
+
+            // Helper to map "usd" -> Currency.USD etc.; if missing, keep ISO upper
+            const mapCurrency = (k: string): string => {
+                const iso = k.toUpperCase();
+                return (Currency as any)[iso] ?? iso;
+            };
+
+            for (const [isoKey, { buy, sell }] of Object.entries(office)) {
+                const currency = mapCurrency(isoKey);
+
+                // Skip empty rows
+                if (buy == null && sell == null) continue;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency,
+                    bank: Bank.TBCBANK,
+                });
+
+                if (existing) {
+                    existing.buy =
+                        buy != null ? String(buy) : existing.buy ?? null;
+                    existing.sell =
+                        sell != null ? String(sell) : existing.sell ?? null;
+                    await this.ratesRepository.save(existing);
+                } else {
+                    const row = this.ratesRepository.create({
+                        currency,
+                        bank: Bank.TBCBANK,
+                        buy: buy != null ? String(buy) : null,
+                        sell: sell != null ? String(sell) : null,
+                    } as Partial<Rate>);
+                    await this.ratesRepository.save(row);
+                }
+            }
+
+            // Optional log
+            this.logger?.log?.(
+                `[TBCBANK] saved ${
+                    Object.keys(office).length
+                } currencies from ${source} @ ${fetchedAt}`,
+            );
+        } catch (err) {
+            this.logger?.error?.(`[TBCBANK] load failed`, err);
+            throw err;
         }
     }
 }
