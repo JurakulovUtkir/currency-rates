@@ -1,66 +1,110 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+// ipakyuli.nuxt-rates.checkout.ts
+import { fetch } from 'undici';
 
-// Define an interface for the exchange rates data
-export interface ExchangeRate {
-    currency: string;
-    buyRate: string;
-    sellRate: string;
+export interface Triple {
+    buy: number | null;
+    sell: number | null;
+    cb: number | null;
+}
+export interface Result {
+    source: string;
+    fetchedAt: string;
+    USD: Triple;
+    EUR: Triple;
+    RUB: Triple;
 }
 
-// Function to fetch and extract exchange rates from Ipak Yuli Bank page
-export async function getIpakYuliExchangeRates(): Promise<ExchangeRate[]> {
-    try {
-        // Fetch the HTML content from the Ipak Yuli Bank exchange rates page
-        const response = await axios.get(
-            'https://ipakyulibank.uz/physical/valyuta-ayirboshlash',
-            {
-                headers: {
-                    'User-Agent':
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                },
+export async function fetchIpakyuliUsdEurRub(): Promise<Result> {
+    const source = 'https://en.ipakyulibank.uz/physical/exchange-rates';
+    const html = await (
+        await fetch(source, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept-Language': 'en-US,en;q=0.9',
             },
-        );
+        })
+    ).text();
 
-        const html = response.data;
+    const m = html.match(
+        /<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i,
+    );
+    if (!m) throw new Error('IPAKYULI: __NUXT_DATA__ not found');
+    const nuxt: any = JSON.parse(m[1]);
+    if (!Array.isArray(nuxt))
+        throw new Error('IPAKYULI: unexpected __NUXT_DATA__');
 
-        // Load the HTML into cheerio
-        const $ = cheerio.load(html);
+    // Resolve devalue-style chains (index -> value -> maybe index ...)
+    const resolve = (v: any, hops = 8): any => {
+        let out = v;
+        for (let i = 0; i < hops; i++) {
+            if (typeof out === 'number' && out in nuxt) out = nuxt[out];
+            else break;
+        }
+        return out;
+    };
+    const toNum = (v: any): number | null =>
+        typeof v === 'number' && Number.isFinite(v) ? v : null;
+    const norm = (v: number | null) => (v == null ? null : Math.round(v) / 100);
 
-        // Parse the exchange rate data
-        const exchangeRates: ExchangeRate[] = [];
+    // Find the RATES TAB we want: name === "At the checkout" (preferred) else isActiveTab===true
+    type Tab = { name?: any; isActiveTab?: any; rates?: any };
+    const tabs: Tab[] = [];
+    const walk = (x: any) => {
+        if (!x) return;
+        if (Array.isArray(x)) {
+            for (const it of x) walk(it);
+            return;
+        }
+        if (typeof x === 'object') {
+            if ('name' in x && 'rates' in x) tabs.push(x as Tab);
+            for (const k in x) walk((x as any)[k]);
+        }
+    };
+    walk(nuxt);
 
-        // Iterate through each currency item in the swiper-slide
-        $('.swiper-wrapper .swiper-slide').each((index, element) => {
-            const currency = $(element)
-                .find('.navbar_22_top-currency-heading')
-                .text()
-                .trim();
-            const buyRate = $(element)
-                .find(
-                    '.navbar_22_top-currency-direction-wrapper:nth-child(1) .navbar_22_top-currency-text',
-                )
-                .text()
-                .trim();
-            const sellRate = $(element)
-                .find(
-                    '.navbar_22_top-currency-direction-wrapper:nth-child(2) .navbar_22_top-currency-text',
-                )
-                .text()
-                .trim();
+    const pickTab = () => {
+        // Prefer explicit "At the checkout"
+        for (const t of tabs) {
+            const name = String(resolve(t.name) ?? '');
+            if (/^At the checkout$/i.test(name)) return t;
+        }
+        // Fallback: the one flagged active
+        for (const t of tabs) {
+            if (resolve(t.isActiveTab) === true) return t;
+        }
+        // Last fallback: first with rates
+        return tabs.find((t) => resolve(t.rates)) ?? null;
+    };
 
-            // Add the extracted data to the exchangeRates array
-            exchangeRates.push({
-                currency,
-                buyRate,
-                sellRate,
-            });
-        });
+    const tab = pickTab();
+    if (!tab) throw new Error('IPAKYULI: checkout tab not found');
 
-        // Return the extracted exchange rates
-        return exchangeRates;
-    } catch (error) {
-        console.error('Error fetching exchange rates:', error);
-        throw error;
+    const ratesArr = resolve(tab.rates);
+    if (!Array.isArray(ratesArr))
+        throw new Error('IPAKYULI: rates array not found');
+
+    // Build index by code_name from the chosen tab
+    const byCode = new Map<string, Triple>();
+    for (const ref of ratesArr) {
+        const row = resolve(ref);
+        if (!row || typeof row !== 'object') continue;
+        const code = resolve(row.code_name);
+        const rate = resolve(row.rate);
+        if (typeof code !== 'string' || !rate || typeof rate !== 'object')
+            continue;
+
+        const buy = norm(toNum(resolve(rate.buy)));
+        const sell = norm(toNum(resolve(rate.sell)));
+        const cb = norm(toNum(resolve(rate.cb)));
+        byCode.set(code, { buy, sell, cb });
     }
+
+    const blank: Triple = { buy: null, sell: null, cb: null };
+    return {
+        source,
+        fetchedAt: new Date().toISOString(),
+        USD: byCode.get('USD') ?? blank,
+        EUR: byCode.get('EUR') ?? blank,
+        RUB: byCode.get('RUB') ?? blank,
+    };
 }

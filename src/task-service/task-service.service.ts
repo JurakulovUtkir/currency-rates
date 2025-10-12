@@ -17,6 +17,7 @@ import { getGarantBankExchangeRates } from 'src/rates/garant.bank';
 import { fetchHamkorbankRates } from 'src/rates/hamkorbank';
 import { fetchHayotBankRates } from 'src/rates/hayotbank';
 import { fetchInfinbankOfficeRates } from 'src/rates/infinbank';
+import { fetchIpakyuliUsdEurRub } from 'src/rates/ipakyuli.bank';
 import { getKdbExchangeRates } from 'src/rates/kdb.bank';
 import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
@@ -212,10 +213,10 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    // // only for testing
+    // only for testing
     // @Cron(CronExpression.EVERY_30_SECONDS)
     // async every_30_seconds() {
-    //     await this.loading_tbc();
+    //     await this.loading_ipakyulibank();
     // }
 
     async loading_banks() {
@@ -262,6 +263,8 @@ export class TaskServiceService {
         await this.loading_mkbank();
 
         await this.loading_tbc();
+
+        await this.loading_ipakyulibank();
     }
 
     async loading_cbu() {
@@ -1517,5 +1520,50 @@ export class TaskServiceService {
             this.logger?.error?.(`[TBCBANK] load failed`, err);
             throw err;
         }
+    }
+
+    async loading_ipakyulibank() {
+        const { USD, EUR, RUB } = await fetchIpakyuliUsdEurRub();
+
+        const saveOne = async (
+            code: Currency,
+            rec?: {
+                buy?: number | null;
+                sell?: number | null;
+                cb?: number | null;
+            },
+        ) => {
+            if (!rec) return;
+
+            const buyNum = rec.buy ?? rec.cb;
+            const sellNum = rec.sell ?? rec.cb;
+            if (buyNum == null && sellNum == null) return;
+
+            const data = {
+                currency: code,
+                bank: Bank.IPAKYULIBANK,
+                buy: buyNum != null ? String(buyNum) : null,
+                sell: sellNum != null ? String(sellNum) : null,
+            } as const;
+
+            const existing = await this.ratesRepository.findOneBy({
+                currency: code,
+                bank: Bank.IPAKYULIBANK,
+            });
+
+            if (existing) {
+                existing.buy = data.buy;
+                existing.sell = data.sell;
+                await this.ratesRepository.save(existing);
+            } else {
+                await this.ratesRepository.save(data as unknown as Rate);
+            }
+        };
+
+        await Promise.all([
+            saveOne(Currency.USD, USD),
+            saveOne(Currency.EUR, EUR),
+            saveOne(Currency.RUB, RUB),
+        ]);
     }
 }
