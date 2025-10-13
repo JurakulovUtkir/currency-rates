@@ -27,6 +27,7 @@ import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
 import { fetchTengeBankRates } from 'src/rates/tengebank';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
 import { Bank, Currency } from 'src/rates/utils/enums';
+import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
 import { In, Repository } from 'typeorm';
@@ -265,6 +266,8 @@ export class TaskServiceService {
         await this.loading_tbc();
 
         await this.loading_ipakyulibank();
+
+        await this.loading_xb();
     }
 
     async loading_cbu() {
@@ -1496,5 +1499,56 @@ export class TaskServiceService {
             saveOne(Currency.EUR, EUR),
             saveOne(Currency.RUB, RUB),
         ]);
+    }
+
+    async loading_xb() {
+        try {
+            const { office } = await fetchXbuzOfficeRatesPptr();
+            // office = { USD:{sell,buy}, GBP:{sell,buy}, CHF:{sell,buy}, EUR:{sell,buy}, KZT:{sell,buy}, JPY:{sell,buy} }
+
+            const saveOne = async (
+                code: Currency,
+                rec?: { buy?: number | null; sell?: number | null },
+            ) => {
+                if (!rec) return;
+
+                const buyNum = rec.buy ?? null;
+                const sellNum = rec.sell ?? null;
+                if (buyNum == null && sellNum == null) return;
+
+                const data = {
+                    currency: code,
+                    bank: Bank.XBUZ, // <-- change to your actual enum member name if different
+                    buy: buyNum != null ? String(buyNum) : null,
+                    sell: sellNum != null ? String(sellNum) : null,
+                } as const;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency: code,
+                    bank: Bank.XBUZ,
+                });
+
+                if (existing) {
+                    existing.buy = data.buy;
+                    existing.sell = data.sell;
+                    await this.ratesRepository.save(existing);
+                } else {
+                    await this.ratesRepository.save(data as unknown as Rate);
+                }
+            };
+
+            await Promise.all([
+                saveOne(Currency.USD, office.USD),
+                saveOne(Currency.EUR, office.EUR),
+                // saveOne(Currency.GBP as Currency, office.GBP),
+                // saveOne(Currency.CHF as Currency, office.CHF),
+                // saveOne(Currency.KZT as Currency, office.KZT),
+                // saveOne(Currency.JPY as Currency, office.JPY),
+                // If XB.UZ later exposes RUB:
+                // saveOne(Currency.RUB, office.RUB),
+            ]);
+        } catch (err) {
+            console.error('[XB.UZ] load failed:', err);
+        }
     }
 }
