@@ -1,74 +1,75 @@
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+// src/rates/garantbank.ts
+import { load } from 'cheerio';
 
-// Define an interface for the exchange rates data
-export interface ExchangeRate {
-    currency: string;
-    mbRate: string;
-    bankRate: string;
-    mobileAppRate: string;
-    atmRate: string;
-}
+type Pair = { buy: number | null; sell: number | null };
+type Office = Record<
+    'usd' | 'eur' | 'gbp' | 'rub' | 'chf' | 'jpy' | 'cny',
+    Pair
+>;
 
-// Exported function to fetch and extract exchange rates from the Garant Bank page
-export async function getGarantBankExchangeRates(): Promise<ExchangeRate[]> {
-    try {
-        // Fetch the HTML content from the Garant Bank exchange rates page
-        const response = await axios.get('https://garantbank.uz/uz', {
-            headers: {
-                'User-Agent':
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            },
+export async function fetchGarantbankOfficeRates() {
+    const source = 'https://garantbank.uz/uz/exchange-rates';
+    const res = await fetch(source, {
+        headers: {
+            'user-agent': 'Mozilla/5.0 (compatible; RatesBot/1.0)',
+            'accept-language': 'uz,en;q=0.9,ru;q=0.8',
+        },
+    });
+    if (!res.ok) throw new Error(`GARANTBANK: HTTP ${res.status}`);
+    const html = await res.text();
+    const $ = load(html);
+
+    const currencies = [
+        'USD',
+        'EUR',
+        'GBP',
+        'RUB',
+        'CHF',
+        'JPY',
+        'CNY',
+    ] as const;
+    const key = (c: (typeof currencies)[number]) =>
+        c.toLowerCase() as keyof Office;
+    const num = (s: string): number | null => {
+        const t = s.replace(/\s+/g, '').replace(',', '.').trim();
+        if (!t) return null;
+        const n = Number(t);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const office: Partial<Office> = {};
+    // Skip header row and the subtitle row
+    $('table.exchange-table tr')
+        .slice(2)
+        .each((_, tr) => {
+            const $tr = $(tr);
+            const code = $tr
+                .find('.exchange-currency')
+                .first()
+                .text()
+                .trim()
+                .toUpperCase();
+            if (!currencies.includes(code as any)) return;
+            const tds = $tr.find('td');
+            const buy = num(
+                tds.eq(2).find('.exchange-purchase').first().text(),
+            );
+            const sell = num(tds.eq(2).find('.exchange-sale').first().text());
+            office[key(code as any)] = { buy, sell };
         });
 
-        const html = response.data;
+    // Ensure all currencies present
+    const ensured = Object.fromEntries(
+        currencies.map((c) => {
+            const k = key(c);
+            return [k, office[k] ?? { buy: null, sell: null }];
+        }),
+    ) as Office;
 
-        // Load the HTML into cheerio
-        const $ = cheerio.load(html);
-
-        // Parse the exchange rate data
-        const exchangeRates: ExchangeRate[] = [];
-
-        // Select the rows of the exchange rates table
-        $('section.section .exchange-table tr').each((index, element) => {
-            // Skip the header row
-            if (index === 0) return;
-
-            const currency = $(element)
-                .find('td:nth-child(1) .exchange-currency')
-                .text()
-                .trim();
-            const mbRate = $(element)
-                .find('td:nth-child(2) .exchange-direction span')
-                .text()
-                .trim();
-            const bankRate = $(element)
-                .find('td:nth-child(3) .exchange-purchase')
-                .text()
-                .trim();
-            const mobileAppRate = $(element)
-                .find('td:nth-child(4) .exchange-purchase')
-                .text()
-                .trim();
-            const atmRate = $(element)
-                .find('td:nth-child(5) .exchange-purchase')
-                .text()
-                .trim();
-
-            // Add the extracted data to the exchangeRates array
-            exchangeRates.push({
-                currency,
-                mbRate,
-                bankRate,
-                mobileAppRate,
-                atmRate,
-            });
-        });
-
-        // Return the extracted exchange rates
-        return exchangeRates;
-    } catch (error) {
-        console.error('Error fetching exchange rates:', error);
-        throw error;
-    }
+    return {
+        bank: 'GARANTBANK',
+        source,
+        fetchedAt: new Date().toISOString(),
+        office: ensured,
+    } as const;
 }

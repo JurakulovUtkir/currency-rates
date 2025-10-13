@@ -13,7 +13,7 @@ import { fetchAsakaCurrencyListAxios } from 'src/rates/asakabank';
 import { getCurrencyRatesFromBrb } from 'src/rates/BRB';
 import { fetchCbuRates } from 'src/rates/cbu';
 import { getDavrbankRates } from 'src/rates/davrbank';
-import { getGarantBankExchangeRates } from 'src/rates/garant.bank';
+import { fetchGarantbankOfficeRates } from 'src/rates/garant.bank';
 import { fetchHamkorbankRates } from 'src/rates/hamkorbank';
 import { fetchHayotBankRates } from 'src/rates/hayotbank';
 import { fetchInfinbankOfficeRates } from 'src/rates/infinbank';
@@ -29,7 +29,7 @@ import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_curren
 import { Bank, Currency } from 'src/rates/utils/enums';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 dotenv.config();
 // const execPromise = promisify(exec);
@@ -214,10 +214,10 @@ export class TaskServiceService {
     }
 
     // only for testing
-    // @Cron(CronExpression.EVERY_30_SECONDS)
-    // async every_30_seconds() {
-    //     await this.loading_ipakyulibank();
-    // }
+    @Cron(CronExpression.EVERY_MINUTE)
+    async every_30_seconds() {
+        await this.every_minutes();
+    }
 
     async loading_banks() {
         // load cbu
@@ -256,7 +256,7 @@ export class TaskServiceService {
 
         await this.loading_hayotbank();
 
-        await this.loading_hamkorbank();
+        // await this.loading_hamkorbank();
 
         await this.loading_infinbank();
 
@@ -583,91 +583,46 @@ export class TaskServiceService {
         }
     }
 
+    // In your service
     async loading_garantbank() {
         try {
-            const data = await getGarantBankExchangeRates(); // Assuming this is defined
+            const { office, source } = await fetchGarantbankOfficeRates(); // { office: { usd:{buy,sell}, eur:{...}, rub:{...} } }
 
-            // Process USD
-            const usd = data.find((rate) => rate.currency === 'USD');
-            if (usd) {
-                const usdData = {
-                    currency: Currency.USD, // Assuming your Currency enum contains 'USD'
-                    bank: Bank.GARANTBANK, // Assuming GARANTBANK is a value in the Bank enum
-                    sell: usd.bankRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: usd.mobileAppRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
+            const toStr = (v: number | null) => (v == null ? null : String(v));
+
+            const rows = [
+                { currency: Currency.USD, pair: office.usd },
+                { currency: Currency.EUR, pair: office.eur },
+                { currency: Currency.RUB, pair: office.rub },
+            ] as const;
+
+            for (const r of rows) {
+                if (!r.pair) continue;
+
+                const payload = {
+                    currency: r.currency,
+                    bank: Bank.GARANTBANK,
+                    buy: toStr(r.pair.buy),
+                    sell: toStr(r.pair.sell),
                 };
 
-                const existingUsd = await this.ratesRepository.findOneBy({
-                    currency: Currency.USD,
+                const existing = await this.ratesRepository.findOneBy({
+                    currency: r.currency,
                     bank: Bank.GARANTBANK,
                 });
 
-                if (existingUsd) {
-                    await this.ratesRepository.update(existingUsd.id, usdData);
+                if (existing) {
+                    await this.ratesRepository.update(existing.id, payload);
                 } else {
-                    await this.ratesRepository.save(usdData);
+                    await this.ratesRepository.save(payload);
                 }
             }
 
-            // Process EUR
-            const eur = data.find((rate) => rate.currency === 'EUR');
-            if (eur) {
-                const eurData = {
-                    currency: Currency.EUR,
-                    bank: Bank.GARANTBANK,
-                    sell: eur.bankRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: eur.mobileAppRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                };
-
-                const existingEur = await this.ratesRepository.findOneBy({
-                    currency: Currency.EUR,
-                    bank: Bank.GARANTBANK,
-                });
-
-                if (existingEur) {
-                    await this.ratesRepository.update(existingEur.id, eurData);
-                } else {
-                    await this.ratesRepository.save(eurData);
-                }
-            }
-
-            // Process RUB
-            const rub = data.find((rate) => rate.currency === 'RUB');
-            if (rub) {
-                const rubData = {
-                    currency: Currency.RUB,
-                    bank: Bank.GARANTBANK,
-                    sell: rub.bankRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: rub.mobileAppRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                };
-
-                const existingRub = await this.ratesRepository.findOneBy({
-                    currency: Currency.RUB,
-                    bank: Bank.GARANTBANK,
-                });
-
-                if (existingRub) {
-                    await this.ratesRepository.update(existingRub.id, rubData);
-                } else {
-                    await this.ratesRepository.save(rubData);
-                }
-            }
-
-            console.log('Currency rates updated successfully in Garantbank');
-        } catch (error) {
-            console.error('Error loading Garantbank rates:', error);
+            console.log(`[GARANTBANK] office rates saved from ${source}`);
+        } catch (err) {
+            console.error('Error loading Garantbank rates:', err);
         }
     }
-
-    // async loading_ipakyolibank() {
-    //     const data = await getIpakYuliExchangeRates();
-    //     console.log(data);
-    // }
-
-    // async loading_ipotekabank() {
-    //     const data = await getExchangeRates();
-    //     console.log(data);
-    // }
 
     async loading_kdb() {
         try {
@@ -747,89 +702,65 @@ export class TaskServiceService {
 
     async loading_nbu() {
         try {
-            const data = await getNbuExchangeRates(); // Assuming this function is defined
+            const raw = await getNbuExchangeRates();
 
-            // Filter to get the USD, EUR, and RUB currencies
-            const filteredRates = data.filter((rate) =>
-                ['USD', 'EUR', 'RUB'].includes(rate.currency),
+            // Keep only what we need
+            const WANT = new Set(['USD', 'EUR', 'RUB'] as const);
+            const mapToEnum: Record<'USD' | 'EUR' | 'RUB', Currency> = {
+                USD: Currency.USD,
+                EUR: Currency.EUR,
+                RUB: Currency.RUB,
+            };
+
+            const toNumStr = (s?: string | null) =>
+                s ? s.replace(/\s+/g, '').replace(',', '.') : null;
+
+            const filtered = raw.filter((r: any) => WANT.has(r.currency));
+
+            // Load existing rows in one query
+            const currencies = [Currency.USD, Currency.EUR, Currency.RUB];
+            const existing = await this.ratesRepository.find({
+                where: { bank: Bank.NBU, currency: In(currencies) },
+            });
+            const existingByCurrency = new Map(
+                existing.map((r) => [r.currency, r]),
             );
 
-            // Process USD
-            const usd = filteredRates.find((rate) => rate.currency === 'USD');
-            if (usd) {
-                const usdData = {
-                    currency: Currency.USD, // Assuming your Currency enum contains 'USD'
-                    bank: Bank.NBU, // Assuming NBU is a value in the Bank enum
-                    sell: usd.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: usd.buyRate
-                        ? usd.buyRate.replace(/\s/g, '').replace(',', '.')
-                        : null, // Store as string
-                };
+            // Build payloads
+            const payloads = filtered
+                .map((r: any) => {
+                    const cur = mapToEnum[r.currency as 'USD' | 'EUR' | 'RUB'];
+                    const prev = existingByCurrency.get(cur);
 
-                const existingUsd = await this.ratesRepository.findOneBy({
-                    currency: Currency.USD,
-                    bank: Bank.NBU,
-                });
+                    const sell = toNumStr(r.sellRate);
+                    const buy = toNumStr(r.buyRate) ?? prev?.buy ?? null;
 
-                if (existingUsd) {
-                    usdData.buy = existingUsd.buy;
-                    await this.ratesRepository.update(existingUsd.id, usdData);
-                } else {
-                    await this.ratesRepository.save(usdData);
-                }
+                    // If no sell available, skip (nothing meaningful to update)
+                    if (!sell) return null;
+
+                    return {
+                        id: prev?.id, // enables upsert via save()
+                        currency: cur,
+                        bank: Bank.NBU,
+                        sell,
+                        buy,
+                    };
+                })
+                .filter(Boolean) as Array<{
+                id?: string;
+                currency: Currency;
+                bank: Bank;
+                sell: string;
+                buy: string | null;
+            }>;
+
+            if (payloads.length) {
+                await this.ratesRepository.save(payloads);
             }
 
-            // Process EUR
-            const eur = filteredRates.find((rate) => rate.currency === 'EUR');
-            if (eur) {
-                const eurData = {
-                    currency: Currency.EUR,
-                    bank: Bank.NBU,
-                    sell: eur.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: eur.buyRate
-                        ? eur.buyRate.replace(/\s/g, '').replace(',', '.')
-                        : null, // Store as string
-                };
-
-                const existingEur = await this.ratesRepository.findOneBy({
-                    currency: Currency.EUR,
-                    bank: Bank.NBU,
-                });
-
-                if (existingEur) {
-                    await this.ratesRepository.update(existingEur.id, eurData);
-                } else {
-                    await this.ratesRepository.save(eurData);
-                }
-            }
-
-            // Process RUB
-            const rub = filteredRates.find((rate) => rate.currency === 'RUB');
-            if (rub) {
-                const rubData = {
-                    currency: Currency.RUB,
-                    bank: Bank.NBU,
-                    sell: rub.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: rub.buyRate
-                        ? rub.buyRate.replace(/\s/g, '').replace(',', '.')
-                        : null, // Store as string
-                };
-
-                const existingRub = await this.ratesRepository.findOneBy({
-                    currency: Currency.RUB,
-                    bank: Bank.NBU,
-                });
-
-                if (existingRub) {
-                    await this.ratesRepository.update(existingRub.id, rubData);
-                } else {
-                    await this.ratesRepository.save(rubData);
-                }
-            }
-
-            console.log('Currency rates updated successfully in NBU');
-        } catch (error) {
-            console.error('Error loading NBU rates:', error);
+            console.log('[NBU] Currency rates updated successfully.');
+        } catch (err) {
+            console.error('[NBU] Error loading rates:', err);
         }
     }
 
