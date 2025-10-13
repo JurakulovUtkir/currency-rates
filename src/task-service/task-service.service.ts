@@ -215,10 +215,10 @@ export class TaskServiceService {
     }
 
     // // only for testing
-    // @Cron(CronExpression.EVERY_MINUTE)
-    // async every_30_seconds() {
-    //     await this.every_minutes();
-    // }
+    @Cron(CronExpression.EVERY_HOUR)
+    async every_30_seconds() {
+        await this.every_minutes();
+    }
 
     async loading_banks() {
         // load cbu
