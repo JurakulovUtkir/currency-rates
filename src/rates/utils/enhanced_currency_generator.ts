@@ -245,7 +245,7 @@ export async function generateRatesImageAllCurrencies(
             ctx.fillStyle = '#fbbf24';
             ctx.font = 'bold 20px Arial, sans-serif';
             ctx.fillText(
-                `${Math.round(cbuRate).toLocaleString()} so'm`,
+                `${cbuRate.toLocaleString()} so'm`,
                 cbuX + cbuCardW / 2,
                 cbuY + 42,
             );
