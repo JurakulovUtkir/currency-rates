@@ -109,20 +109,13 @@ export class TaskServiceService {
     async every_minutes() {
         const chatId = this.telegram_channel_id;
 
-        // const escapeHtml = (s: string) =>
-        //     String(s)
-        //         .replace(/&/g, '&amp;')
-        //         .replace(/</g, '&lt;')
-        //         .replace(/>/g, '&gt;')
-        //         .replace(/"/g, '&quot;')
-        //         .replace(/'/g, '&#39;');
-
         const fmt = (v: unknown) => {
             const n = Number(v);
             return Number.isFinite(n) ? n.toFixed(2) : '-';
         };
 
         try {
+            // refresh data
             await this.loading_banks();
 
             const usdRates = await this.ratesRepository.find({
@@ -130,65 +123,51 @@ export class TaskServiceService {
                 order: { bank: 'ASC' },
             });
 
-            // Build monospace table (for <pre>)
-            // const header = `Bank name                 | Sell / Buy`;
-            // const sep = `----------------------------------------`;
-            const rows: string[] = [];
-
-            for (const r of usdRates ?? []) {
-                const bank = String(r.bank ?? 'Unknown');
-                const sell = fmt(r.sell);
-                const buy = fmt(r.buy);
-                const bankCell =
-                    bank.length > 24 ? bank.slice(0, 24) : bank.padEnd(24, ' ');
-                rows.push(`${bankCell} |\t ${sell} / ${buy}`);
+            if (!usdRates?.length) {
+                console.warn('[every_minutes] No USD data available yet.');
+                return;
             }
 
-            // const tableText = usdRates?.length
-            //     ? `${header}\n${sep}\n${rows.join('\n')}`
-            //     : `No USD data available yet.`;
+            // map entity -> image generator input
+            const imgRates = usdRates.map((r) => ({
+                currency: String(r.currency).toLowerCase(),
+                bank: String(r.bank ?? 'Unknown'),
+                sell: fmt(r.sell),
+                buy: fmt(r.buy),
+            }));
 
-            // ======= 1) Send PHOTO generated from rates via canvas =======
-            try {
-                // map your entity to the image generator Rate type
-                const imgRates: any[] = (usdRates ?? []).map((r) => ({
-                    currency: String(r.currency).toLowerCase(),
-                    bank: String(r.bank),
-                    sell: r.sell ?? '-',
-                    buy: r.buy ?? '-',
-                }));
+            // generate image
+            const { filePath } = await generateRatesImageAllCurrencies(
+                imgRates,
+                {
+                    format: 'png',
+                    outputDir: path.resolve(process.cwd(), 'images'),
+                    // titleLine1: 'Актуальный обменный',
+                    // titleLine2: 'курс в банках Узбекистана',
+                },
+            );
 
-                const { filePath } = await generateRatesImageAllCurrencies(
-                    imgRates,
-                    {
-                        format: 'png',
-                        outputDir: path.resolve(process.cwd(), 'images'),
-                        // optional title overrides:
-                        // titleLine1: 'Актуальный обменный',
-                        // titleLine2: 'курс в банках Узбекистана',
-                    },
+            // caption (HTML)
+            const caption =
+                '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
+                "Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin";
+
+            // send photo with caption
+            await this.bot.telegram.sendPhoto(
+                chatId,
+                { source: fs.createReadStream(filePath) },
+                { caption, parse_mode: 'HTML' },
+            );
+
+            // best-effort cleanup
+            fs.promises
+                .unlink(filePath)
+                .catch((e) =>
+                    console.warn(
+                        '[every_minutes] Could not delete image:',
+                        e?.message ?? e,
+                    ),
                 );
-
-                await this.bot.telegram.sendPhoto(chatId, {
-                    source: fs.createReadStream(filePath),
-                });
-
-                // best-effort cleanup
-                fs.promises.unlink(filePath).catch(() => {
-                    console.log('smth');
-                });
-            } catch (photoErr) {
-                console.error('Failed to generate/send photo:', photoErr);
-            }
-
-            // ======= 2) Send TEXT message (HTML + <pre>) =======
-            // const htmlPre = escapeHtml(tableText);
-            // const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
-
-            // await this.bot.telegram.sendMessage(chatId, textMessage, {
-            //     parse_mode: 'HTML',
-            //     disable_web_page_preview: true,
-            // });
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }
@@ -215,7 +194,8 @@ export class TaskServiceService {
     }
 
     // // only for testing
-    @Cron(CronExpression.EVERY_10_MINUTES)
+    // @Cron(CronExpression.EVERY_10_MINUTES)
+    // @Cron(CronExpression.EVERY_MINUTE)
     async every_30_seconds() {
         await this.every_minutes();
     }
