@@ -215,29 +215,21 @@ export class TaskServiceService {
     }
 
     // // only for testing
-    @Cron(CronExpression.EVERY_HOUR)
+    @Cron(CronExpression.EVERY_10_MINUTES)
     async every_30_seconds() {
         await this.every_minutes();
     }
 
     async loading_banks() {
-        // load cbu
         await this.loading_cbu();
 
-        // loading aloqabank
         await this.loading_aloqabank();
 
-        // loading anorbank
         await this.loading_anorbank();
 
-        //loading davrbank
         await this.loading_davrbank();
 
         await this.loading_garantbank(); // bunda sell rate va buy rate ni aniq qilish kerak bo'lmasa hammasini bir xil qilib qo'yayabdi
-
-        // await this.loading_ipakyolibank(); // ishlamadi bu ham, [] data keldi
-
-        // await this.loading_ipotekabank();  // data kelmadi axiosda error deb chiqdi qayta ko'rish kerak ai bilan
 
         await this.loading_kdb();
 
@@ -257,7 +249,7 @@ export class TaskServiceService {
 
         await this.loading_hayotbank();
 
-        // await this.loading_hamkorbank();
+        await this.loading_hamkorbank();
 
         await this.loading_infinbank();
 
@@ -1394,12 +1386,12 @@ export class TaskServiceService {
             ]);
 
             // Optional: quick debug log
-            this.logger?.log?.({
-                bank: Bank.MKBANK,
-                source,
-                officeDateISO,
-                office,
-            });
+            // this.logger?.log?.({
+            //     bank: Bank.MKBANK,
+            //     source,
+            //     officeDateISO,
+            //     office,
+            // });
         } catch (err) {
             this.logger?.error?.('loading_mkbank failed', err);
         }
@@ -1547,6 +1539,8 @@ export class TaskServiceService {
                 // If XB.UZ later exposes RUB:
                 // saveOne(Currency.RUB, office.RUB),
             ]);
+
+            console.log('Currencies successfully fetched from XB');
         } catch (err) {
             console.error('[XB.UZ] load failed:', err);
         }

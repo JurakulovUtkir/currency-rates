@@ -32,8 +32,10 @@ async function bootstrap() {
     SwaggerModule.setup('api', app, document);
 
     // log some data from testing bank
-    // const data = await fetchXbuzOfficeRatesPptr();
+    // const data = await fetchHamkorbankRates();
     // console.log(data);
+
+    console.log(Date.now().toLocaleString());
 
     await app.listen(process.env.PORT);
 }
