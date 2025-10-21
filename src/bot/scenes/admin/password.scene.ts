@@ -1,4 +1,4 @@
-import { On, Scene, SceneEnter } from 'nestjs-telegraf';
+import { On, Scene, SceneEnter, Start } from 'nestjs-telegraf';
 import { Context } from 'src/bot/context/context';
 import { scenes } from 'src/bot/utils/scenes';
 
@@ -9,6 +9,15 @@ export class PasswordScene {
     @SceneEnter()
     async start(ctx: Context) {
         await ctx.reply('Please enter the admin password');
+    }
+
+    @Start()
+    async start_button(ctx: Context) {
+        // const user = await this.getUser(ctx);
+        // await ctx.reply(`Welcome ${user.full_name}`);
+
+        // going to password scene
+        await ctx.scene.enter(scenes.PASSWORD);
     }
 
     @On('text')

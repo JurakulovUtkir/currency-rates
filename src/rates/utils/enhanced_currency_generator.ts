@@ -21,7 +21,7 @@ export interface RatesImageOptions {
     fileNamePrefix?: string;
     format?: 'png' | 'jpeg';
     jpegQuality?: number;
-    theme?: 'light' | 'dark';
+    theme?: 'light' | 'dark' | 'kommers';
 }
 
 export interface GenerateImageResult {
@@ -44,6 +44,19 @@ const THEMES = {
         danger: '#dc2626',
         shadow: 'rgba(0,0,0,0.10)',
         chip: '#eef2ff',
+    },
+    kommers: {
+        bg: ['#223078', '#2C3880'], // navy backdrop (top → bottom)
+        panel: '#FFFFFF', // white card
+        border: '#E6EAF2', // soft card border
+        text: '#0F172A', // main text (near-slate-900)
+        textDim: '#64748B', // secondary text
+        primary: '#2C3880', // brand navy (for gradients/accents)
+        secondary: '#3F5BD8', // lighter indigo accent
+        success: '#00B860', // Kommers-style green (+Δ)
+        danger: '#EF4444', // red (-Δ) if needed
+        shadow: 'rgba(18,29,61,0.35)', // deep navy shadow
+        chip: '#F4F6FF', // pale indigo chip
     },
     dark: {
         bg: ['#0f172a', '#1e293b'],

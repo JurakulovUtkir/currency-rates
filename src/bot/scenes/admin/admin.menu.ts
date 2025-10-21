@@ -1,7 +1,7 @@
 // admin-menu.scene.ts
 import { InjectRepository } from '@nestjs/typeorm';
 import * as fs from 'fs';
-import { Action, Ctx, On, Scene, SceneEnter } from 'nestjs-telegraf';
+import { Action, Ctx, On, Scene, SceneEnter, Start } from 'nestjs-telegraf';
 import * as path from 'path';
 import { Context } from 'src/bot/context/context';
 import { scenes } from 'src/bot/utils/scenes';
@@ -47,6 +47,15 @@ export class AdminMenuScene {
 
         await ctx.reply('Welcome to admin menu');
         await this.showBanks(ctx);
+    }
+
+    @Start()
+    async start_button(ctx: Context) {
+        // const user = await this.getUser(ctx);
+        // await ctx.reply(`Welcome ${user.full_name}`);
+
+        // going to password scene
+        await ctx.scene.enter(scenes.PASSWORD);
     }
 
     private async showBanks(ctx: Context) {
@@ -309,6 +318,9 @@ export class AdminMenuScene {
             //     parse_mode: 'HTML',
             //     disable_web_page_preview: true,
             // });
+
+            // going to password scene
+            await ctx.scene.enter(scenes.PASSWORD);
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }

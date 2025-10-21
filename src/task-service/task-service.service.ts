@@ -23,6 +23,7 @@ import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
+import { fetchSqbExchangeRates } from 'src/rates/sqb';
 import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
 import { fetchTengeBankRates } from 'src/rates/tengebank';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
@@ -136,7 +137,7 @@ export class TaskServiceService {
                 buy: fmt(r.buy),
             }));
 
-            // generate image
+            // generate image real ishlab turgani
             const { filePath } = await generateRatesImageAllCurrencies(
                 imgRates,
                 {
@@ -147,10 +148,23 @@ export class TaskServiceService {
                 },
             );
 
+            // generate image
+            // const { filePath } = await generateRatesImageAllCurrencies(
+            //     imgRates,
+            //     {
+            //         theme: 'kommers',
+            //         width: 1000,
+            //         title: 'Валюталар курси',
+            //         logoPath: path.resolve(__dirname, './logo.png'),
+            //     },
+            // );
+
             // caption (HTML)
             const caption =
                 '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
-                "Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin";
+                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `\n\n@dollrkurs`;
 
             // send photo with caption
             await this.bot.telegram.sendPhoto(
@@ -240,6 +254,8 @@ export class TaskServiceService {
         await this.loading_ipakyulibank();
 
         await this.loading_xb();
+
+        await this.loading_sqb();
     }
 
     async loading_cbu() {
@@ -1523,6 +1539,55 @@ export class TaskServiceService {
             console.log('Currencies successfully fetched from XB');
         } catch (err) {
             console.error('[XB.UZ] load failed:', err);
+        }
+    }
+
+    // Save only "Ayirboshlash shaxobchasi" (office) rates
+    async loading_sqb() {
+        try {
+            const { office } = await fetchSqbExchangeRates();
+            if (!office) return;
+
+            const map: Record<string, Currency> = {
+                usd: Currency.USD,
+                eur: Currency.EUR,
+                rub: Currency.RUB,
+                // gbp: Currency.GBP,
+                // chf: Currency.CHF,
+                // jpy: Currency.JPY,
+            };
+
+            for (const [k, rec] of Object.entries(office)) {
+                const code = map[k.toLowerCase()];
+                if (!code || !rec) continue;
+
+                // prefer explicit buy/sell; fallback to CB if one side missing
+                const buyNum = rec.buy ?? rec.cb ?? null;
+                const sellNum = rec.sell ?? rec.cb ?? null;
+                if (buyNum == null && sellNum == null) continue;
+
+                const row = {
+                    currency: code,
+                    bank: Bank.SQB,
+                    buy: buyNum != null ? String(buyNum) : null,
+                    sell: sellNum != null ? String(sellNum) : null,
+                } as const;
+
+                const existing = await this.ratesRepository.findOneBy({
+                    currency: code,
+                    bank: Bank.SQB,
+                });
+
+                if (existing) {
+                    existing.buy = row.buy;
+                    existing.sell = row.sell;
+                    await this.ratesRepository.save(existing);
+                } else {
+                    await this.ratesRepository.save(row);
+                }
+            }
+        } catch (err) {
+            console.error('[SQB] load failed:', err);
         }
     }
 }

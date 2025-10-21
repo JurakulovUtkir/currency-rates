@@ -32,7 +32,7 @@ async function bootstrap() {
     SwaggerModule.setup('api', app, document);
 
     // log some data from testing bank
-    // const data = await fetchHamkorbankRates();
+    // const data = await fetchSqbExchangeRates();
     // console.log(data);
 
     console.log(Date.now().toLocaleString());
