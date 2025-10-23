@@ -209,7 +209,7 @@ export class TaskServiceService {
 
     // // only for testing
     // @Cron(CronExpression.EVERY_10_MINUTES)
-    // @Cron(CronExpression.EVERY_MINUTE)
+    @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
         await this.every_minutes();
     }
