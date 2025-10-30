@@ -7,6 +7,7 @@ import { Context } from 'src/bot/context/context';
 import { scenes } from 'src/bot/utils/scenes';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
 import { Currency } from 'src/rates/utils/enums';
+import { TaskServiceService } from 'src/task-service/task-service.service';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Markup } from 'telegraf';
 import { Repository } from 'typeorm';
@@ -35,6 +36,7 @@ export class AdminMenuScene {
     constructor(
         @InjectRepository(Rate)
         private readonly ratesRepository: Repository<Rate>,
+        private readonly taskServiceService: TaskServiceService,
     ) {}
 
     // ========== STEP 1: list all banks ==========
@@ -76,6 +78,15 @@ export class AdminMenuScene {
         const buttons = banks.map((b) =>
             Markup.button.callback(b, `bank:${encodeURIComponent(b)}`),
         );
+
+        // add button to get currencies at the moment
+        buttons.push(
+            Markup.button.callback(
+                'Hozirgi valyutalarni ko‘rsatish',
+                'current_currencies',
+            ),
+        );
+
         await ctx.reply(
             'Bankni tanlang:',
             Markup.inlineKeyboard(chunk(buttons, 2)),
@@ -238,13 +249,13 @@ export class AdminMenuScene {
 
     @Action('generate-photo')
     async generatePhoto(ctx: Context) {
-        const escapeHtml = (s: string) =>
-            String(s)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
+        // const escapeHtml = (s: string) =>
+        //     String(s)
+        //         .replace(/&/g, '&amp;')
+        //         .replace(/</g, '&lt;')
+        //         .replace(/>/g, '&gt;')
+        //         .replace(/"/g, '&quot;')
+        //         .replace(/'/g, '&#39;');
 
         const fmt = (v: unknown) => {
             const n = Number(v);
@@ -258,8 +269,8 @@ export class AdminMenuScene {
             });
 
             // Build monospace table (for <pre>)
-            const header = `Bank name                 | Sell / Buy`;
-            const sep = `----------------------------------------`;
+            // const header = `Bank name                 | Sell / Buy`;
+            // const sep = `----------------------------------------`;
             const rows: string[] = [];
 
             for (const r of usdRates ?? []) {
@@ -271,9 +282,9 @@ export class AdminMenuScene {
                 rows.push(`${bankCell} |\t ${sell} / ${buy}`);
             }
 
-            const tableText = usdRates?.length
-                ? `${header}\n${sep}\n${rows.join('\n')}`
-                : `No USD data available yet.`;
+            // const tableText = usdRates?.length
+            //     ? `${header}\n${sep}\n${rows.join('\n')}`
+            //     : `No USD data available yet.`;
 
             // ======= 1) Send PHOTO generated from rates via canvas =======
             try {
@@ -311,8 +322,8 @@ export class AdminMenuScene {
             }
 
             // ======= 2) Send TEXT message (HTML + <pre>) =======
-            const htmlPre = escapeHtml(tableText);
-            const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
+            // const htmlPre = escapeHtml(tableText);
+            // const textMessage = `<b>💵 USD kurslari</b>\n<pre>${htmlPre}</pre>`;
 
             // await this.bot.telegram.sendMessage(chatId, textMessage, {
             //     parse_mode: 'HTML',
@@ -323,6 +334,77 @@ export class AdminMenuScene {
             await ctx.scene.enter(scenes.PASSWORD);
         } catch (err) {
             console.error('every_minutes cron error:', err);
+        }
+    }
+
+    sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    @Action('current_currencies')
+    async showCurrentCurrencies(@Ctx() ctx: Context) {
+        const chatId = ctx.chat?.id;
+        if (!chatId) return;
+
+        const prefix = 'Ma’lumotlar yuklanmoqda…';
+        const sent = await ctx.reply(`⏳ ${prefix}`);
+        const messageId = sent.message_id;
+
+        let run = true;
+        let i = 0;
+        // spinner loop without setInterval overlap
+        (async () => {
+            let actionTick = 0;
+            while (run) {
+                try {
+                    await ctx.telegram.editMessageText(
+                        chatId,
+                        messageId,
+                        undefined,
+                        `${frames[i++ % frames.length]} ${prefix}`,
+                    );
+                    // sendChatAction at most every ~4s to keep indicator alive
+                    if (actionTick++ % 3 === 0) {
+                        await ctx.telegram.sendChatAction(
+                            chatId,
+                            'upload_photo',
+                        );
+                    }
+                } catch {
+                    /* ignore transient edit errors (e.g., message already edited) */
+                }
+                await this.sleep(1200);
+            }
+        })();
+
+        try {
+            await this.taskServiceService.loading_banks();
+            await this.generatePhoto(ctx);
+            try {
+                await ctx.telegram.editMessageText(
+                    chatId,
+                    messageId,
+                    undefined,
+                    '✅ Tayyor! Rasm yuborildi.',
+                );
+            } catch {}
+        } catch (err) {
+            try {
+                await ctx.telegram.editMessageText(
+                    chatId,
+                    messageId,
+                    undefined,
+                    '❌ Xatolik: rasmni yuborib bo‘lmadi.',
+                );
+            } catch {}
+            console.error('Failed to generate/send photo:', err);
+        } finally {
+            run = false; // stops spinner loop
+            // optional auto-clean after a short delay
+            setTimeout(() => {
+                ctx.telegram.deleteMessage(chatId, messageId).catch(() => {
+                    console.log('smth');
+                });
+            }, 2500);
         }
     }
 

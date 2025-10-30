@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import * as dotenv from 'dotenv';
+import { TelegrafModule } from 'nestjs-telegraf';
+import { session } from 'telegraf';
 import { BotModule } from './bot/bot.module';
 import { TaskServiceModule } from './task-service/task-service.module';
 
@@ -17,6 +19,13 @@ dotenv.config();
             database: process.env.DB_NAME,
             autoLoadEntities: true,
             synchronize: true,
+        }),
+
+        TelegrafModule.forRoot({
+            middlewares: [session()],
+            botName: 'bot',
+            token: process.env.BOT_TOKEN!,
+            include: [BotModule], // point to the module with @Update handlers
         }),
         // ServeStaticModule.forRoot({
         //     rootPath: join(__dirname, '..', 'assets'),
