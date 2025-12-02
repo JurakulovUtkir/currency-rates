@@ -44,6 +44,6 @@ RUN chown -R appuser:appgroup /app/uploads /app/assets
 
 USER appuser
 
-EXPOSE 3999
+EXPOSE 3998
 
 CMD ["yarn", "start:prod"]
