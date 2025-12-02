@@ -5,8 +5,10 @@ WORKDIR /app
 
 COPY package.json yarn.lock ./
 
-# Install necessary tools including PostgreSQL client (for pg_dump)
-RUN apk add --no-cache python3 g++ make postgresql-client
+# Tools for node-gyp + pg_dump + canvas build deps
+RUN apk add --no-cache \
+    python3 g++ make postgresql-client \
+    cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev pixman-dev freetype-dev fontconfig-dev
 
 RUN yarn install --frozen-lockfile
 
@@ -21,8 +23,10 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Install PostgreSQL client again in the final stage (to use pg_dump)
-RUN apk add --no-cache postgresql-client
+# Runtime libs for pg_dump + canvas
+RUN apk add --no-cache \
+    postgresql-client \
+    cairo pango jpeg giflib librsvg pixman freetype fontconfig
 
 # Copy necessary files
 COPY --from=builder /app/node_modules ./node_modules
