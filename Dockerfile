@@ -23,27 +23,29 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Runtime libs for pg_dump + canvas
+# pg_dump + chromium runtime deps
 RUN apk add --no-cache \
     postgresql-client \
-    cairo pango jpeg giflib librsvg pixman freetype fontconfig
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
 
-# Copy necessary files
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/yarn.lock ./
 
-# 🔐 Create necessary directories and set permissions
-RUN mkdir -p /app/uploads /app/assets/files/backup \
-    && chmod -R 777 /app/uploads /app/assets
-
-# 👤 Add non-root user and switch
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN chown -R appuser:appgroup /app/uploads /app/assets
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
+    && mkdir -p /app/uploads /app/assets/files/backup /app/images \
+    && chown -R appuser:appgroup /app
 
 USER appuser
 
 EXPOSE 3998
-
 CMD ["yarn", "start:prod"]
