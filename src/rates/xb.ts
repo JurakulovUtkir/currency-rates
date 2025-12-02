@@ -21,7 +21,6 @@ export async function fetchXbuzOfficeRatesPptr(): Promise<{
 
     try {
         browser = await puppeteer.launch({
-            executablePath: '/usr/bin/chromium',
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox'],
         });
