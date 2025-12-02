@@ -1,7 +1,7 @@
 # Node dependencies
 node_modules
 npm-debug.log
-yarn.lock
+# yarn.lock
 
 # Build output
 dist

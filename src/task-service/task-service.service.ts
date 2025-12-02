@@ -26,6 +26,7 @@ import { getExchangeRates } from 'src/rates/poytaxtbank';
 import { fetchSqbExchangeRates } from 'src/rates/sqb';
 import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
 import { fetchTengeBankRates } from 'src/rates/tengebank';
+import { generateBestRatesImage } from 'src/rates/utils/best-5';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
 import { Bank, Currency } from 'src/rates/utils/enums';
 import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
@@ -148,16 +149,13 @@ export class TaskServiceService {
                 },
             );
 
-            // generate image
-            // const { filePath } = await generateRatesImageAllCurrencies(
-            //     imgRates,
-            //     {
-            //         theme: 'kommers',
-            //         width: 1000,
-            //         title: 'Валюталар курси',
-            //         logoPath: path.resolve(__dirname, './logo.png'),
-            //     },
-            // );
+            // generate image for best 5 banks rates (testing stage)
+            const best5 = await generateBestRatesImage(imgRates, {
+                format: 'png',
+                outputDir: path.resolve(process.cwd(), 'images'),
+                // titleLine1: 'Актуальный обменный',
+                // titleLine2: 'курс в банках Узбекистана',
+            });
 
             // caption (HTML)
             const caption =
@@ -170,6 +168,13 @@ export class TaskServiceService {
             await this.bot.telegram.sendPhoto(
                 chatId,
                 { source: fs.createReadStream(filePath) },
+                { caption, parse_mode: 'HTML' },
+            );
+
+            // send photo with caption
+            await this.bot.telegram.sendPhoto(
+                chatId,
+                { source: fs.createReadStream(best5.filePath) },
                 { caption, parse_mode: 'HTML' },
             );
 
@@ -207,12 +212,21 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    // // only for testing
-    // @Cron(CronExpression.EVERY_10_MINUTES)
+    /**
+     * Every hour real working cron
+     */
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
         await this.every_minutes();
     }
+
+    // /**
+    //  * Every  cron for testing stage
+    //  */
+    // @Cron(CronExpression.EVERY_MINUTE)
+    // async every_minute_test() {
+    //     await this.every_minutes();
+    // }
 
     async loading_banks() {
         await this.loading_cbu();
