@@ -23,6 +23,10 @@ RUN apk add --no-cache \
     postgresql-client \
     cairo pango jpeg giflib librsvg pixman freetype fontconfig
 
+# Tell puppeteer-core where Chromium is
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./

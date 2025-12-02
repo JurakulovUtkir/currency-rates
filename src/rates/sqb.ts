@@ -32,7 +32,7 @@ export interface SqbResult {
 export async function fetchSqbExchangeRates(): Promise<SqbResult> {
     const source = 'https://sqb.uz/uz/individuals/exchange-money/';
     const launched = await puppeteer.launch({
-        executablePath: '/usr/bin/chromium-browser',
+        executablePath: '/usr/bin/chromium',
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
