@@ -13,7 +13,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
     ports:
-      - '127.0.0.1:3000:${PORT}' # Tashqi port:3000, ichki port:3999
+      - '127.0.0.1:${PORT}:${PORT}' # Tashqi port:same, ichki port: same
     volumes:
       - ./assets:/app/assets # Mount local `assets` to container `/app/assets`
       - ./uploads:/app/uploads # Optional: if you use `/uploads` for file storage
