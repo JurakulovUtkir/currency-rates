@@ -94,7 +94,7 @@ export async function generateBestRatesImage(
     }
 
     const {
-        width = 1000,
+        width = 700,
         title = 'Eng yaxshi sotish va sotib olish kurslari',
         outputDir = path.resolve(process.cwd(), 'images'),
         fileNamePrefix = 'best-rates',

@@ -164,6 +164,13 @@ export class TaskServiceService {
                 `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
                 `\n\n@dollrkurs`;
 
+            // caption (HTML)
+            const best_5_caption =
+                '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
+                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `\n\n@dollrkurs`;
+
             // send photo with caption
             await this.bot.telegram.sendPhoto(
                 chatId,
@@ -175,7 +182,7 @@ export class TaskServiceService {
             await this.bot.telegram.sendPhoto(
                 chatId,
                 { source: fs.createReadStream(best5.filePath) },
-                { caption, parse_mode: 'HTML' },
+                { caption: best_5_caption, parse_mode: 'HTML' },
             );
 
             // best-effort cleanup
