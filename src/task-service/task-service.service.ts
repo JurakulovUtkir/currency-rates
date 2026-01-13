@@ -11,7 +11,7 @@ import { getAlokabankExchangeRates } from 'src/rates/aloqabank';
 import { getExchangeRatesFromAnorbank } from 'src/rates/anorbank';
 import { fetchAsakaCurrencyListAxios } from 'src/rates/asakabank';
 import { getCurrencyRatesFromBrb } from 'src/rates/BRB';
-import { fetchCbuRates } from 'src/rates/cbu';
+import { CbuRate, fetchCbuRates } from 'src/rates/cbu';
 import { getDavrbankRates } from 'src/rates/davrbank';
 import { fetchGarantbankOfficeRates } from 'src/rates/garant.bank';
 import { fetchHamkorbankRates } from 'src/rates/hamkorbank';
@@ -214,10 +214,10 @@ export class TaskServiceService {
         await this.every_minutes();
     }
 
-    @Cron(CronExpression.EVERY_4_HOURS)
-    async every_day_at_sometime() {
-        await this.every_minutes();
-    }
+    // @Cron(CronExpression.EVERY_4_HOURS)
+    // async every_day_at_sometime() {
+    //     await this.every_minutes();
+    // }
 
     /**
      * Every hour real working cron
@@ -225,16 +225,181 @@ export class TaskServiceService {
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
         await this.every_minutes();
+        await this.sending_currency_rates_string();
+    }
+
+    async sending_currency_rates_string() {
+        try {
+            // Fetch CBU rates
+            const cbuRates: CbuRate[] = await fetchCbuRates();
+            console.log('CBU Rates:', cbuRates);
+
+            // Extract currency rates with helper function
+            const getCurrencyRate = (currency: string): CbuRate | undefined => {
+                return cbuRates.find((rate) => rate.Ccy === currency);
+            };
+
+            const USD = getCurrencyRate('USD');
+            const EUR = getCurrencyRate('EUR');
+            const RUB = getCurrencyRate('RUB');
+            const KZT = getCurrencyRate('KZT');
+            const TRY = getCurrencyRate('TRY');
+            const CNY = getCurrencyRate('CNY');
+
+            // Validate that all required currencies are present
+            if (!USD || !EUR || !RUB || !KZT || !TRY || !CNY) {
+                console.error('Missing required currency rates');
+                return;
+            }
+
+            // Fetch market rates for USD
+            const usdMarketRates = await this.ratesRepository.find({
+                where: {
+                    currency: Currency.USD,
+                },
+            });
+
+            // Find best USD prices (convert string to number)
+            const lowestUsdSell = this.findLowestSellPrice(usdMarketRates);
+            const highestUsdBuy = this.findHighestBuyPrice(usdMarketRates);
+
+            // Fetch market rates for EUR
+            const eurMarketRates = await this.ratesRepository.find({
+                where: {
+                    currency: Currency.EUR,
+                },
+            });
+
+            // Find best EUR prices
+            const lowestEurSell = this.findLowestSellPrice(eurMarketRates);
+            const highestEurBuy = this.findHighestBuyPrice(eurMarketRates);
+
+            // Fetch market rates for RUB
+            const rubMarketRates = await this.ratesRepository.find({
+                where: {
+                    currency: Currency.RUB,
+                },
+            });
+
+            // Find best RUB prices
+            const lowestRubSell = this.findLowestSellPrice(rubMarketRates);
+            const highestRubBuy = this.findHighestBuyPrice(rubMarketRates);
+
+            // Format date
+            const today = new Date();
+            const formattedDate = today.toLocaleDateString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+            });
+
+            // Build message
+            const message = this.buildCurrencyMessage({
+                date: formattedDate,
+                usd: {
+                    buy: highestUsdBuy,
+                    sell: lowestUsdSell,
+                    official: USD.Rate,
+                    diff: USD.Diff,
+                },
+                rub: {
+                    buy: highestRubBuy,
+                    sell: lowestRubSell,
+                },
+                eur: {
+                    official: EUR.Rate,
+                    diff: EUR.Diff,
+                },
+                officialRates: {
+                    RUB: { rate: RUB.Rate, diff: RUB.Diff },
+                    KZT: { rate: KZT.Rate, diff: KZT.Diff },
+                    TRY: { rate: TRY.Rate, diff: TRY.Diff },
+                    CNY: { rate: CNY.Rate, diff: CNY.Diff },
+                },
+            });
+
+            console.log('Currency message:', message);
+
+            // TODO: Send message to Telegram or other service
+            await this.bot.telegram.sendMessage(
+                this.telegram_channel_id,
+                message,
+            );
+        } catch (error) {
+            console.error('Error in currency rates cron job:', error);
+        }
     }
 
     // /**
-    //  * Every  cron for testing stage
+    //  * Every 30 seconds cron for testing stage
     //  */
     // @Cron(CronExpression.EVERY_MINUTE)
-    // async every_minute_test() {
-    //     await this.every_minutes();
-    // }
+    // async every_minute_test() {}
 
+    /**
+     * Find the lowest sell price from an array of rates
+     * Handles string to number conversion and filters out null/invalid values
+     */
+    private findLowestSellPrice(rates: Rate[]): number {
+        const validPrices = rates
+            .map((rate) => (rate.sell ? parseFloat(rate.sell) : null))
+            .filter((price): price is number => price !== null && price > 0);
+
+        return validPrices.length > 0 ? Math.min(...validPrices) : 0;
+    }
+
+    /**
+     * Find the highest buy price from an array of rates
+     * Handles string to number conversion and filters out null/invalid values
+     */
+    private findHighestBuyPrice(rates: Rate[]): number {
+        const validPrices = rates
+            .map((rate) => (rate.buy ? parseFloat(rate.buy) : null))
+            .filter((price): price is number => price !== null && price > 0);
+
+        return validPrices.length > 0 ? Math.max(...validPrices) : 0;
+    }
+
+    /**
+     * Helper method to build the currency message
+     */
+    private buildCurrencyMessage(data: {
+        date: string;
+        usd: { buy: number; sell: number; official: string; diff: string };
+        rub: { buy: number; sell: number };
+        eur: { official: string; diff: string };
+        officialRates: {
+            RUB: { rate: string; diff: string };
+            KZT: { rate: string; diff: string };
+            TRY: { rate: string; diff: string };
+            CNY: { rate: string; diff: string };
+        };
+    }): string {
+        return `${data.date}
+Курс валют в Узбекистане.
+
+➖➖➖➖➖➖➖➖
+Рыночный курс:
+💲1 USD
+➖Покупка: ${data.usd.buy.toLocaleString('ru-RU')} сум
+➖Продажа: ${data.usd.sell.toLocaleString('ru-RU')} сум
+
+🤑1 RUB
+➖Покупка: ${data.rub.buy.toLocaleString('ru-RU')} сум
+➖Продажа: ${data.rub.sell.toLocaleString('ru-RU')} сум
+
+➖➖➖➖➖➖➖➖
+
+👌 Официальный курс ЦБРУз.
+🇺🇸1 USD = ${data.usd.official} сум ${data.usd.diff}
+🇪🇺1 EUR = ${data.eur.official} сум ${data.eur.diff}
+🇷🇺1 RUB = ${data.officialRates.RUB.rate} сум ${data.officialRates.RUB.diff}
+🇰🇿1 KZT = ${data.officialRates.KZT.rate} сум ${data.officialRates.KZT.diff}
+🇹🇷1 TRY = ${data.officialRates.TRY.rate} сум ${data.officialRates.TRY.diff}
+🇨🇳1 CNY = ${data.officialRates.CNY.rate} сум ${data.officialRates.CNY.diff}
+
+@dollrkurs`;
+    }
     async loading_banks() {
         await this.loading_cbu();
 
