@@ -32,7 +32,7 @@ import { Bank, Currency } from 'src/rates/utils/enums';
 import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 
 dotenv.config();
 // const execPromise = promisify(exec);
@@ -256,6 +256,7 @@ export class TaskServiceService {
             const usdMarketRates = await this.ratesRepository.find({
                 where: {
                     currency: Currency.USD,
+                    bank: Not(Bank.CBU), // Exclude CBU rates
                 },
             });
 
@@ -267,6 +268,7 @@ export class TaskServiceService {
             const eurMarketRates = await this.ratesRepository.find({
                 where: {
                     currency: Currency.EUR,
+                    bank: Not(Bank.CBU), // Exclude CBU rates
                 },
             });
 
@@ -278,6 +280,7 @@ export class TaskServiceService {
             const rubMarketRates = await this.ratesRepository.find({
                 where: {
                     currency: Currency.RUB,
+                    bank: Not(Bank.CBU), // Exclude CBU rates
                 },
             });
 
