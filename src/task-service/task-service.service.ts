@@ -56,7 +56,7 @@ export class TaskServiceService {
     }
 
     private test_channel_id = -1001311323927;
-    private dollrkurs_channel_id = -1001417795097;
+    private dollrkurs_channel_id = -1002929234941;
 
     // @Cron(CronExpression.EVERY_DAY_AT_5AM)
     // async backup_db() {
