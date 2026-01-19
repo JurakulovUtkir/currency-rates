@@ -55,7 +55,8 @@ export class TaskServiceService {
         return `PGPASSWORD="${process.env.DB_PASSWORD}" pg_dump -h ${host} -U ${user} -d ${db} -c > ${filePath}`;
     }
 
-    private telegram_channel_id = -1001311323927;
+    private test_channel_id = -1001311323927;
+    private dollrkurs_channel_id = -1001417795097;
 
     // @Cron(CronExpression.EVERY_DAY_AT_5AM)
     // async backup_db() {
@@ -108,9 +109,7 @@ export class TaskServiceService {
             .replace(/>/g, '&gt;');
     }
 
-    async every_minutes() {
-        const chatId = this.telegram_channel_id;
-
+    async every_minutes(chatId: number) {
         const fmt = (v: unknown) => {
             const n = Number(v);
             return Number.isFinite(n) ? n.toFixed(2) : '-';
@@ -201,17 +200,18 @@ export class TaskServiceService {
 
     @Cron('10 13 * * *', { timeZone: 'Asia/Tashkent' }) // 1:10 PM
     async every_day_at_1pm_plus10() {
-        await this.every_minutes();
+        await this.every_minutes(this.dollrkurs_channel_id);
     }
 
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
     async every_day_at_9am_plus10() {
-        await this.every_minutes();
+        await this.every_minutes(this.dollrkurs_channel_id);
+        await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
     @Cron('10 16 * * *', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
-        await this.every_minutes();
+        await this.every_minutes(this.dollrkurs_channel_id);
     }
 
     // @Cron(CronExpression.EVERY_4_HOURS)
@@ -224,11 +224,11 @@ export class TaskServiceService {
      */
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
-        await this.every_minutes();
-        await this.sending_currency_rates_string();
+        await this.every_minutes(this.test_channel_id);
+        await this.sending_currency_rates_string(this.test_channel_id);
     }
 
-    async sending_currency_rates_string() {
+    async sending_currency_rates_string(chatId: number) {
         try {
             // Fetch CBU rates
             const cbuRates: CbuRate[] = await fetchCbuRates();
@@ -324,10 +324,7 @@ export class TaskServiceService {
             console.log('Currency message:', message);
 
             // TODO: Send message to Telegram or other service
-            await this.bot.telegram.sendMessage(
-                this.telegram_channel_id,
-                message,
-            );
+            await this.bot.telegram.sendMessage(chatId, message);
         } catch (error) {
             console.error('Error in currency rates cron job:', error);
         }
