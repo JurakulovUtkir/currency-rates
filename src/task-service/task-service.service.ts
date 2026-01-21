@@ -236,7 +236,7 @@ export class TaskServiceService {
      */
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
-        await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+        await this.send_pragnoz_call_auction(this.test_channel_id);
         await this.every_minutes(this.test_channel_id);
         await this.sending_currency_rates_string(this.test_channel_id);
     }
