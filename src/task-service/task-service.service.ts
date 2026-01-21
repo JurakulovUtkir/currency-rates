@@ -23,6 +23,7 @@ import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
+import { getCallAuctionInfo } from 'src/rates/prognoz';
 import { fetchSqbExchangeRates } from 'src/rates/sqb';
 import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
 import { fetchTengeBankRates } from 'src/rates/tengebank';
@@ -198,9 +199,19 @@ export class TaskServiceService {
         }
     }
 
-    @Cron('10 13 * * *', { timeZone: 'Asia/Tashkent' }) // 1:10 PM
-    async every_day_at_1pm_plus10() {
-        await this.every_minutes(this.dollrkurs_channel_id);
+    /**
+8:00 Кунлик, текст
+9:10 Банклар
+10:30 Прогноз эртанги кун
+14:00 га бирор маълумот топиш керак
+16:00 CBU курси
+     */
+
+    // every day at 8am cron
+    @Cron('0 8 * * *', { timeZone: 'Asia/Tashkent' }) // 8:00 AM
+    async every_day_at_8am() {
+        await this.sending_currency_rates_string(this.dollrkurs_channel_id);
+        await this.sending_currency_rates_string(this.test_channel_id);
     }
 
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
@@ -209,21 +220,23 @@ export class TaskServiceService {
         await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
+    @Cron('33 10 * * *', { timeZone: 'Asia/Tashkent' }) // 10:33 AM
+    async every_day_at_1pm_plus10() {
+        await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+        await this.send_pragnoz_call_auction(this.test_channel_id);
+    }
+
     @Cron('10 16 * * *', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
         await this.every_minutes(this.dollrkurs_channel_id);
     }
-
-    // @Cron(CronExpression.EVERY_4_HOURS)
-    // async every_day_at_sometime() {
-    //     await this.every_minutes();
-    // }
 
     /**
      * Every hour real working cron
      */
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
+        await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
         await this.every_minutes(this.test_channel_id);
         await this.sending_currency_rates_string(this.test_channel_id);
     }
@@ -330,11 +343,57 @@ export class TaskServiceService {
         }
     }
 
+    async send_pragnoz_call_auction(chatId: number) {
+        try {
+            const result = await getCallAuctionInfo();
+
+            if (!result.success || !result.response) {
+                console.error(
+                    'Failed to fetch call auction info:',
+                    result.error,
+                );
+                console.error(
+                    chatId,
+                    "❌ Ma'lumotlarni yuklashda xatolik yuz berdi.",
+                );
+                return;
+            }
+
+            const { data } = result.response;
+
+            const directionText = data.direction ? "ko'tarilishi" : 'tushishi';
+
+            const changeSign = data.direction ? '+' : '-';
+
+            const message = `
+Ertaga dollar kursi ${directionText} kutilmoqda
+
+${changeSign} ${data.change} so'm
+
+Tahminiy kurs ${data.price} so'm
+
+@dollrkurs
+        `.trim();
+
+            await this.bot.telegram.sendMessage(chatId, message);
+
+            console.log(`Call auction prognoz sent to chat ${chatId}`);
+        } catch (error) {
+            console.error('Error sending call auction prognoz:', error);
+            await this.bot.telegram.sendMessage(
+                chatId,
+                '❌ Xabar yuborishda xatolik yuz berdi.',
+            );
+        }
+    }
+
     // /**
     //  * Every 30 seconds cron for testing stage
     //  */
     // @Cron(CronExpression.EVERY_MINUTE)
-    // async every_minute_test() {}
+    // async every_minute_test() {
+    //     await this.send_pragnoz_call_auction(this.test_channel_id);
+    // }
 
     /**
      * Find the lowest sell price from an array of rates
@@ -376,27 +435,27 @@ export class TaskServiceService {
         };
     }): string {
         return `${data.date}
-Курс валют в Узбекистане.
+O‘zbekistonda valyuta kurslari
 
 ➖➖➖➖➖➖➖➖
-Рыночный курс:
-💲1 USD
-➖Покупка: ${data.usd.buy.toLocaleString('ru-RU')} сум
-➖Продажа: ${data.usd.sell.toLocaleString('ru-RU')} сум
+Bozor kursi:
+💲1 AQSh dollari
+➖Sotib olish: ${data.usd.buy.toLocaleString('ru-RU')} so'm
+➖Sotish: ${data.usd.sell.toLocaleString('ru-RU')} so'm
 
-🤑1 RUB
-➖Покупка: ${data.rub.buy.toLocaleString('ru-RU')} сум
-➖Продажа: ${data.rub.sell.toLocaleString('ru-RU')} сум
+🤑1 Rossiya rubli
+➖Sotib olish: ${data.rub.buy.toLocaleString('ru-RU')} so'm
+➖Sotish: ${data.rub.sell.toLocaleString('ru-RU')} so'm
 
 ➖➖➖➖➖➖➖➖
 
-👌 Официальный курс ЦБРУз.
-🇺🇸1 USD = ${data.usd.official} сум ${data.usd.diff}
-🇪🇺1 EUR = ${data.eur.official} сум ${data.eur.diff}
-🇷🇺1 RUB = ${data.officialRates.RUB.rate} сум ${data.officialRates.RUB.diff}
-🇰🇿1 KZT = ${data.officialRates.KZT.rate} сум ${data.officialRates.KZT.diff}
-🇹🇷1 TRY = ${data.officialRates.TRY.rate} сум ${data.officialRates.TRY.diff}
-🇨🇳1 CNY = ${data.officialRates.CNY.rate} сум ${data.officialRates.CNY.diff}
+🏛 Markaziy bankning rasmiy kursi:
+🇺🇸1 USD = ${data.usd.official} so'm ${data.usd.diff}
+🇪🇺1 EUR = ${data.eur.official} so'm ${data.eur.diff}
+🇷🇺1 RUB = ${data.officialRates.RUB.rate} so'm ${data.officialRates.RUB.diff}
+🇰🇿1 KZT = ${data.officialRates.KZT.rate} so'm ${data.officialRates.KZT.diff}
+🇹🇷1 TRY = ${data.officialRates.TRY.rate} so'm ${data.officialRates.TRY.diff}
+🇨🇳1 CNY = ${data.officialRates.CNY.rate} so'm ${data.officialRates.CNY.diff}
 
 @dollrkurs`;
     }
