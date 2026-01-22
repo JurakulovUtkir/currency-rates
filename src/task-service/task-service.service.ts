@@ -217,11 +217,11 @@ export class TaskServiceService {
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
     async every_day_at_9am_plus10() {
         await this.every_minutes(this.dollrkurs_channel_id);
-        await this.sending_currency_rates_string(this.dollrkurs_channel_id);
+        // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
-    @Cron('33 10 * * *', { timeZone: 'Asia/Tashkent' }) // 10:33 AM
-    async every_day_at_1pm_plus10() {
+    @Cron('11 11 * * *', { timeZone: 'Asia/Tashkent' }) // 11:11 AM Tashkent time
+    async every_day_at_11_11_am() {
         await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
         await this.send_pragnoz_call_auction(this.test_channel_id);
     }
