@@ -246,6 +246,7 @@ export class TaskServiceService {
         await this.send_pragnoz_call_auction(this.test_channel_id);
         await this.every_minutes(this.test_channel_id);
         await this.send_currency_rates_string1(this.test_channel_id);
+        await this.send_currency_rates_string2(this.test_channel_id);
     }
 
     // /**
