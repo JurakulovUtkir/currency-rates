@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
+import { getCentralBankRate } from './rates/pragnoz';
 dotenv.config();
 
 async function bootstrap() {
@@ -34,6 +35,9 @@ async function bootstrap() {
     // log some data from testing bank
     // const data = await fetchSqbExchangeRates();
     // console.log(data);
+
+    const rate = await getCentralBankRate();
+    console.log(rate);
 
     console.log(Date.now().toLocaleString());
 

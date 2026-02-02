@@ -23,6 +23,7 @@ import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
+import { CentralBankRate, getCentralBankRate } from 'src/rates/pragnoz';
 import { getCallAuctionInfo } from 'src/rates/prognoz';
 import { fetchSqbExchangeRates } from 'src/rates/sqb';
 import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
@@ -249,17 +250,18 @@ export class TaskServiceService {
         await this.send_currency_rates_string2(this.test_channel_id);
     }
 
-    // /**
-    //  * Only for testing purpose
-    //  * every 30 seconds cron
-    //  */
-    // @Cron('*/30 * * * * *')
-    // async every_30_seconds_test() {
-    //     // await this.send_pragnoz_call_auction(this.test_channel_id);
-    //     // await this.every_minutes(this.test_channel_id);
-    //     await this.send_currency_rates_string1(this.test_channel_id);
-    //     await this.send_currency_rates_string2(this.test_channel_id);
-    // }
+    /**
+     * Runs every weekday (Monday-Friday) at 10:30 AM
+     * Cron format: second minute hour day month dayOfWeek
+     * 0 30 10 * * 1-5
+     */
+    @Cron('0 40 10 * * 1-5', {
+        timeZone: 'Asia/Tashkent', // Optional: specify timezone
+    })
+    async sendDailyCentralBankRate() {
+        const data = await getCentralBankRate();
+        await this.sendCentralBankRateSimple(this.test_channel_id, data);
+    }
 
     /**
      * Fetches and aggregates currency rates from CBU and market sources
@@ -401,6 +403,42 @@ Tahminiy kurs ${data.price} so'm
             console.log(`Call auction prognoz sent to chat ${chatId}`);
         } catch (error) {
             console.error('Error sending call auction prognoz:', error);
+            await this.bot.telegram.sendMessage(
+                chatId,
+                '❌ Xabar yuborishda xatolik yuz berdi.',
+            );
+        }
+    }
+
+    async sendCentralBankRateSimple(
+        chatId: number | string,
+        rate: CentralBankRate,
+    ) {
+        try {
+            if (!rate) {
+                console.error('Failed to fetch central bank rate');
+                await this.bot.telegram.sendMessage(
+                    chatId,
+                    "❌ Ma'lumotlarni yuklashda xatolik yuz berdi.",
+                );
+                return;
+            }
+
+            const changeSign = rate.changeDirection === 'up' ? '▲' : '▼';
+
+            const message = `
+O'zRVB ochilish auksioni kursi: ${rate.date}
+
+1 ${rate.currency} = ${rate.rate} ${rate.targetCurrency} (${changeSign}${rate.changeAmount})
+
+@dollrkurs
+            `.trim();
+
+            await this.bot.telegram.sendMessage(chatId, message);
+
+            console.log(`Central bank rate sent to chat ${chatId}`);
+        } catch (error) {
+            console.error('Error sending central bank rate:', error);
             await this.bot.telegram.sendMessage(
                 chatId,
                 '❌ Xabar yuborishda xatolik yuz berdi.',
