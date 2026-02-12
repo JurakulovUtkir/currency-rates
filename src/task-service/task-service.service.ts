@@ -5,6 +5,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import { InjectBot } from 'nestjs-telegraf';
 import * as path from 'path';
+import puppeteer from 'puppeteer';
 import { Context } from 'src/bot/context/context';
 import { getAgrobankExchangeRates } from 'src/rates/agrobank';
 import { getAlokabankExchangeRates } from 'src/rates/aloqabank';
@@ -23,7 +24,7 @@ import { fetchMkbankOfficeRates } from 'src/rates/mkbank';
 import { getNbuExchangeRates } from 'src/rates/nbu';
 import { getOctobankRates } from 'src/rates/octobank';
 import { getExchangeRates } from 'src/rates/poytaxtbank';
-import { CentralBankRate, getCentralBankRate } from 'src/rates/pragnoz';
+import { CentralBankRate } from 'src/rates/pragnoz';
 import { getCallAuctionInfo } from 'src/rates/prognoz';
 import { fetchSqbExchangeRates } from 'src/rates/sqb';
 import { fetchTbcBankOfficeRates } from 'src/rates/TBC';
@@ -112,93 +113,110 @@ export class TaskServiceService {
             .replace(/>/g, '&gt;');
     }
 
-    async every_minutes(chatId: number) {
+    private async sendAllRatesImage(
+        chatId: number,
+        usdRates: Rate[],
+    ): Promise<void> {
+        const imgRates = this.mapRates(usdRates);
+
+        const { filePath } = await generateRatesImageAllCurrencies(imgRates, {
+            format: 'png',
+            outputDir: path.resolve(process.cwd(), 'images'),
+        });
+
+        const caption =
+            '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
+            `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+            `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+            `\n\n@dollrkurs`;
+
+        await this.bot.telegram.sendPhoto(
+            chatId,
+            { source: fs.createReadStream(filePath) },
+            { caption, parse_mode: 'HTML' },
+        );
+
+        fs.promises
+            .unlink(filePath)
+            .catch((e) =>
+                console.warn(
+                    '[sendAllRatesImage] Could not delete image:',
+                    e?.message ?? e,
+                ),
+            );
+    }
+
+    private async sendBest5RatesImage(
+        chatId: number,
+        usdRates: Rate[],
+    ): Promise<void> {
+        const imgRates = this.mapRates(usdRates);
+
+        const { filePath } = await generateBestRatesImage(imgRates, {
+            format: 'png',
+            outputDir: path.resolve(process.cwd(), 'images'),
+        });
+
+        const caption =
+            '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
+            `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+            `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+            `\n\n@dollrkurs`;
+
+        await this.bot.telegram.sendPhoto(
+            chatId,
+            { source: fs.createReadStream(filePath) },
+            { caption: caption, parse_mode: 'HTML' },
+        );
+
+        fs.promises
+            .unlink(filePath)
+            .catch((e) =>
+                console.warn(
+                    '[sendBest5RatesImage] Could not delete image:',
+                    e?.message ?? e,
+                ),
+            );
+    }
+
+    // shared helper
+    private mapRates(usdRates: Rate[]) {
         const fmt = (v: unknown) => {
             const n = Number(v);
             return Number.isFinite(n) ? n.toFixed(2) : '-';
         };
 
-        try {
-            // refresh data
-            await this.loading_banks();
+        return usdRates.map((r) => ({
+            currency: String(r.currency).toLowerCase(),
+            bank: String(r.bank ?? 'Unknown'),
+            sell: fmt(r.sell),
+            buy: fmt(r.buy),
+        }));
+    }
 
-            const usdRates = await this.ratesRepository.find({
-                where: { currency: Currency.USD },
-                order: { bank: 'ASC' },
-            });
+    // clean main function
+    async every_minutes(chatId: number) {
+        try {
+            const usdRates = await this.loadUsdRates();
 
             if (!usdRates?.length) {
                 console.warn('[every_minutes] No USD data available yet.');
                 return;
             }
 
-            // map entity -> image generator input
-            const imgRates = usdRates.map((r) => ({
-                currency: String(r.currency).toLowerCase(),
-                bank: String(r.bank ?? 'Unknown'),
-                sell: fmt(r.sell),
-                buy: fmt(r.buy),
-            }));
-
-            // generate image real ishlab turgani
-            const { filePath } = await generateRatesImageAllCurrencies(
-                imgRates,
-                {
-                    format: 'png',
-                    outputDir: path.resolve(process.cwd(), 'images'),
-                    // titleLine1: 'Актуальный обменный',
-                    // titleLine2: 'курс в банках Узбекистана',
-                },
-            );
-
-            // generate image for best 5 banks rates (testing stage)
-            const best5 = await generateBestRatesImage(imgRates, {
-                format: 'png',
-                outputDir: path.resolve(process.cwd(), 'images'),
-                // titleLine1: 'Актуальный обменный',
-                // titleLine2: 'курс в банках Узбекистана',
-            });
-
-            // caption (HTML)
-            const caption =
-                '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
-                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
-                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
-                `\n\n@dollrkurs`;
-
-            // caption (HTML)
-            const best_5_caption =
-                '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
-                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
-                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
-                `\n\n@dollrkurs`;
-
-            // send photo with caption
-            await this.bot.telegram.sendPhoto(
-                chatId,
-                { source: fs.createReadStream(filePath) },
-                { caption, parse_mode: 'HTML' },
-            );
-
-            // send photo with caption
-            await this.bot.telegram.sendPhoto(
-                chatId,
-                { source: fs.createReadStream(best5.filePath) },
-                { caption: best_5_caption, parse_mode: 'HTML' },
-            );
-
-            // best-effort cleanup
-            fs.promises
-                .unlink(filePath)
-                .catch((e) =>
-                    console.warn(
-                        '[every_minutes] Could not delete image:',
-                        e?.message ?? e,
-                    ),
-                );
+            await this.sendAllRatesImage(chatId, usdRates);
+            await this.sendBest5RatesImage(chatId, usdRates);
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }
+    }
+
+    private async loadUsdRates(): Promise<Rate[]> {
+        await this.loading_banks();
+        return this.ratesRepository.find({
+            where: { currency: Currency.USD },
+            order: { bank: 'ASC' },
+        });
     }
 
     /**
@@ -222,21 +240,35 @@ export class TaskServiceService {
         // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
-    @Cron('11 11 * * *', { timeZone: 'Asia/Tashkent' }) // 11:11 AM Tashkent time
-    async every_day_at_11_11_am() {
-        await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
-        await this.send_pragnoz_call_auction(this.test_channel_id);
-    }
+    // @Cron('11 11 * * *', { timeZone: 'Asia/Tashkent' }) // 11:11 AM Tashkent time
+    // async every_day_at_11_11_am() {
+    //     await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+    //     await this.send_pragnoz_call_auction(this.test_channel_id);
+    // }
 
-    @Cron('40 10 * * *', { timeZone: 'Asia/Tashkent' }) // 10:40 AM Tashkent time
-    async every_day_at_10_40_am() {
-        // await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
-        await this.send_pragnoz_call_auction(this.test_channel_id);
+    // @Cron('40 10 * * *', { timeZone: 'Asia/Tashkent' }) // 10:40 AM Tashkent time
+    // async every_day_at_10_40_am() {
+    //     // await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+    //     await this.send_pragnoz_call_auction(this.test_channel_id);
+    // }
+
+    @Cron('10 14 * * *')
+    async every_day_at_14_10() {
+        try {
+            const usdRates = await this.loadUsdRates();
+            if (!usdRates?.length) return;
+
+            await this.sendAllRatesImage(this.dollrkurs_channel_id, usdRates);
+        } catch (err) {
+            console.error('[every_day_at_14_10] error:', err);
+        }
     }
 
     @Cron('10 16 * * *', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
-        await this.every_minutes(this.dollrkurs_channel_id);
+        // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
+        await this.CBU_screenshot(this.test_channel_id);
+        await this.CBU_screenshot(this.dollrkurs_channel_id);
     }
 
     /**
@@ -250,18 +282,121 @@ export class TaskServiceService {
         await this.send_currency_rates_string2(this.test_channel_id);
     }
 
+    async CBU_screenshot(chat_id: number) {
+        try {
+            const browser = await puppeteer.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            });
+
+            const screenshotPath = path.resolve(
+                process.cwd(),
+                'images',
+                `cbu-${Date.now()}.png`,
+            ) as `${string}.png`;
+
+            try {
+                const page = await browser.newPage();
+                await page.setViewport({
+                    width: 1280,
+                    height: 800,
+                    deviceScaleFactor: 3, // 3x resolution (like Retina)
+                });
+                await page.goto('https://cbu.uz/uz/', {
+                    waitUntil: 'networkidle2',
+                    timeout: 30000,
+                });
+
+                // Hide items after first 3 (keep only USD, EUR, RUB)
+                await page.$$eval('.exchange__item', (items) => {
+                    items.forEach((item, i) => {
+                        if (i >= 3)
+                            (item as HTMLElement).style.display = 'none';
+                    });
+                });
+
+                const element = await page.waitForSelector('.exchange__list');
+                await element.screenshot({
+                    path: screenshotPath,
+                    type: 'png', // PNG = lossless (best quality)
+                    omitBackground: true, // transparent background
+                });
+
+                // scrape only first 3 rates for caption
+                const rates = await page.$$eval('.exchange__item', (items) =>
+                    items.slice(0, 3).map((item) => {
+                        const currency =
+                            item.getAttribute('data-currency') ?? '';
+                        const valueText =
+                            item.querySelector('.exchange__item_value')
+                                ?.textContent ?? '';
+                        const shiftText =
+                            item.querySelector('.exchange__item_shift')
+                                ?.textContent ?? '';
+                        const isGreen = item
+                            .querySelector('.exchange__item_shift')
+                            ?.classList.contains('color_green');
+                        const rate =
+                            parseFloat(valueText.replace(/[^0-9.]/g, '')) || 0;
+                        const change =
+                            parseFloat(shiftText.replace(/[^0-9.-]/g, '')) || 0;
+                        return {
+                            currency,
+                            rate,
+                            change: Math.abs(change),
+                            direction: (isGreen ? 'up' : 'down') as
+                                | 'up'
+                                | 'down',
+                        };
+                    }),
+                );
+
+                const emoji: Record<string, string> = {
+                    USD: '💲',
+                    EUR: '🇪🇺',
+                    RUB: '₽',
+                };
+
+                const lines = rates.map((r) => {
+                    const arrow = r.direction === 'up' ? '📈' : '📉';
+                    const sign = r.direction === 'up' ? '+' : '-';
+                    const flag = emoji[r.currency] ?? '💱';
+                    return `${flag} <b>${r.currency}</b> = ${r.rate.toFixed(
+                        2,
+                    )} (${sign}${r.change})  ${arrow}`;
+                });
+
+                const caption =
+                    `<b>🏛 Markaziy bank kurslari</b>\n\n` +
+                    lines.join('\n') +
+                    `\n\n@dollrkurs`;
+
+                await this.bot.telegram.sendPhoto(
+                    chat_id,
+                    { source: fs.createReadStream(screenshotPath) },
+                    { caption, parse_mode: 'HTML' },
+                );
+            } finally {
+                await browser.close();
+                fs.promises.unlink(screenshotPath).catch(() => {});
+            }
+        } catch (err) {
+            console.error('[CBU_screenshot] error:', err);
+        }
+    }
+
     /**
      * Runs every weekday (Monday-Friday) at 10:30 AM
      * Cron format: second minute hour day month dayOfWeek
      * 0 30 10 * * 1-5
      */
-    @Cron('0 40 10 * * 1-5', {
-        timeZone: 'Asia/Tashkent', // Optional: specify timezone
-    })
-    async sendDailyCentralBankRate() {
-        const data = await getCentralBankRate();
-        await this.sendCentralBankRateSimple(this.test_channel_id, data);
-    }
+    // @Cron('0 40 10 * * 1-5', {
+    //     timeZone: 'Asia/Tashkent', // Optional: specify timezone
+    // })
+    // async sendDailyCentralBankRate() {
+    //     const data = await getCentralBankRate();
+    //     await this.sendCentralBankRateSimple(this.test_channel_id, data);
+    // }
 
     /**
      * Fetches and aggregates currency rates from CBU and market sources
@@ -523,11 +658,11 @@ O‘zbekistonda valyuta kurslari
 
 ➖➖➖➖➖➖➖➖
 Bozor kursi:
-💲1 AQSh dollari
+$ 1 AQSh dollari
 ➖Sotib olish: ${data.usd.buy.toLocaleString('ru-RU')} so'm
 ➖Sotish: ${data.usd.sell.toLocaleString('ru-RU')} so'm
 
-🤑1 Rossiya rubli
+₽ 1 Rossiya rubli
 ➖Sotib olish: ${data.rub.buy.toLocaleString('ru-RU')} so'm
 ➖Sotish: ${data.rub.sell.toLocaleString('ru-RU')} so'm
 
