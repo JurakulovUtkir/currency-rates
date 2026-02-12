@@ -352,8 +352,8 @@ export class TaskServiceService {
                 );
 
                 const emoji: Record<string, string> = {
-                    USD: '💲',
-                    EUR: '🇪🇺',
+                    USD: '$',
+                    EUR: '€',
                     RUB: '₽',
                 };
 
