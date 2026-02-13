@@ -51,13 +51,13 @@ export class TaskServiceService {
 
     private logger = new Logger();
 
-    private getBackupCommand(filePath: string): string {
-        const host = process.env.DB_HOST || 'genix-postgres'; // Change 'db' to your PostgreSQL service name in Docker
-        const user = process.env.DB_USER || 'genix';
-        const db = process.env.DB_NAME || 'genix';
+    // private getBackupCommand(filePath: string): string {
+    //     const host = process.env.DB_HOST || 'genix-postgres'; // Change 'db' to your PostgreSQL service name in Docker
+    //     const user = process.env.DB_USER || 'genix';
+    //     const db = process.env.DB_NAME || 'genix';
 
-        return `PGPASSWORD="${process.env.DB_PASSWORD}" pg_dump -h ${host} -U ${user} -d ${db} -c > ${filePath}`;
-    }
+    //     return `PGPASSWORD="${process.env.DB_PASSWORD}" pg_dump -h ${host} -U ${user} -d ${db} -c > ${filePath}`;
+    // }
 
     private test_channel_id = -1001311323927;
     private dollrkurs_channel_id = -1002929234941;
@@ -146,39 +146,6 @@ export class TaskServiceService {
             );
     }
 
-    private async sendBest5RatesImage(
-        chatId: number,
-        usdRates: Rate[],
-    ): Promise<void> {
-        const imgRates = this.mapRates(usdRates);
-
-        const { filePath } = await generateBestRatesImage(imgRates, {
-            format: 'png',
-            outputDir: path.resolve(process.cwd(), 'images'),
-        });
-
-        const caption =
-            '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
-            `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
-            `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
-            `\n\n@dollrkurs`;
-
-        await this.bot.telegram.sendPhoto(
-            chatId,
-            { source: fs.createReadStream(filePath) },
-            { caption: caption, parse_mode: 'HTML' },
-        );
-
-        fs.promises
-            .unlink(filePath)
-            .catch((e) =>
-                console.warn(
-                    '[sendBest5RatesImage] Could not delete image:',
-                    e?.message ?? e,
-                ),
-            );
-    }
-
     // shared helper
     private mapRates(usdRates: Rate[]) {
         const fmt = (v: unknown) => {
@@ -194,18 +161,90 @@ export class TaskServiceService {
         }));
     }
 
-    // clean main function
     async every_minutes(chatId: number) {
+        const fmt = (v: unknown) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? n.toFixed(2) : '-';
+        };
+
         try {
-            const usdRates = await this.loadUsdRates();
+            // refresh data
+            await this.loading_banks();
+
+            const usdRates = await this.ratesRepository.find({
+                where: { currency: Currency.USD },
+                order: { bank: 'ASC' },
+            });
 
             if (!usdRates?.length) {
                 console.warn('[every_minutes] No USD data available yet.');
                 return;
             }
 
-            await this.sendAllRatesImage(chatId, usdRates);
-            await this.sendBest5RatesImage(chatId, usdRates);
+            // map entity -> image generator input
+            const imgRates = usdRates.map((r) => ({
+                currency: String(r.currency).toLowerCase(),
+                bank: String(r.bank ?? 'Unknown'),
+                sell: fmt(r.sell),
+                buy: fmt(r.buy),
+            }));
+
+            // generate image real ishlab turgani
+            const { filePath } = await generateRatesImageAllCurrencies(
+                imgRates,
+                {
+                    format: 'png',
+                    outputDir: path.resolve(process.cwd(), 'images'),
+                    // titleLine1: 'Актуальный обменный',
+                    // titleLine2: 'курс в банках Узбекистана',
+                },
+            );
+
+            // generate image for best 5 banks rates (testing stage)
+            const best5 = await generateBestRatesImage(imgRates, {
+                format: 'png',
+                outputDir: path.resolve(process.cwd(), 'images'),
+                // titleLine1: 'Актуальный обменный',
+                // titleLine2: 'курс в банках Узбекистана',
+            });
+
+            // caption (HTML)
+            const caption =
+                '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
+                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `\n\n@dollrkurs`;
+
+            // caption (HTML)
+            const best_5_caption =
+                '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
+                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `\n\n@dollrkurs`;
+
+            // send photo with caption
+            await this.bot.telegram.sendPhoto(
+                chatId,
+                { source: fs.createReadStream(filePath) },
+                { caption, parse_mode: 'HTML' },
+            );
+
+            // send photo with caption
+            await this.bot.telegram.sendPhoto(
+                chatId,
+                { source: fs.createReadStream(best5.filePath) },
+                { caption: best_5_caption, parse_mode: 'HTML' },
+            );
+
+            // best-effort cleanup
+            fs.promises
+                .unlink(filePath)
+                .catch((e) =>
+                    console.warn(
+                        '[every_minutes] Could not delete image:',
+                        e?.message ?? e,
+                    ),
+                );
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }
@@ -235,8 +274,9 @@ export class TaskServiceService {
     }
 
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
+    // @Cron(CronExpression.EVERY_MINUTE) // for a test development
     async every_day_at_9am_plus10() {
-        await this.every_minutes(this.dollrkurs_channel_id);
+        await this.every_minutes(this.test_channel_id);
         // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
@@ -255,10 +295,8 @@ export class TaskServiceService {
     @Cron('10 14 * * *')
     async every_day_at_14_10() {
         try {
-            const usdRates = await this.loadUsdRates();
-            if (!usdRates?.length) return;
-
-            await this.sendAllRatesImage(this.dollrkurs_channel_id, usdRates);
+            await this.every_minutes(this.test_channel_id);
+            await this.every_minutes(this.dollrkurs_channel_id);
         } catch (err) {
             console.error('[every_day_at_14_10] error:', err);
         }
@@ -770,47 +808,37 @@ $ 1 AQSh dollari
     }
 
     async loading_banks() {
-        await this.loading_cbu();
+        const results = await Promise.allSettled([
+            this.loading_cbu(),
+            this.loading_aloqabank(),
+            this.loading_anorbank(),
+            this.loading_davrbank(),
+            this.loading_garantbank(),
+            this.loading_kdb(),
+            this.loading_nbu(),
+            this.loading_octobank(),
+            this.loading_poytaxtbank(),
+            this.loading_agrobank(),
+            this.loading_asakabank(),
+            this.loading_brb(),
+            this.loading_tengebank(),
+            this.loading_hayotbank(),
+            this.loading_hamkorbank(),
+            this.loading_infinbank(),
+            this.loading_tbc(),
+            this.loading_ipakyulibank(),
+            this.loading_xb(),
+            this.loading_sqb(),
+        ]);
 
-        await this.loading_aloqabank();
-
-        await this.loading_anorbank();
-
-        await this.loading_davrbank();
-
-        await this.loading_garantbank(); // bunda sell rate va buy rate ni aniq qilish kerak bo'lmasa hammasini bir xil qilib qo'yayabdi
-
-        await this.loading_kdb();
-
-        await this.loading_nbu(); // buy rate da muammo bor chiqmayapti
-
-        await this.loading_octobank();
-
-        await this.loading_poytaxtbank();
-
-        await this.loading_agrobank();
-
-        await this.loading_asakabank(); // bunda request qilganida muammo bo'ldi // manimcha header da origin qilib o'zini saytini berish kerak
-
-        await this.loading_brb();
-
-        await this.loading_tengebank();
-
-        await this.loading_hayotbank();
-
-        await this.loading_hamkorbank();
-
-        await this.loading_infinbank();
-
-        // await this.loading_mkbank();
-
-        await this.loading_tbc();
-
-        await this.loading_ipakyulibank();
-
-        await this.loading_xb();
-
-        await this.loading_sqb();
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+                console.warn(
+                    `[loading_banks] Bank #${i} failed:`,
+                    r.reason?.message ?? r.reason,
+                );
+            }
+        });
     }
 
     async loading_cbu() {
