@@ -277,6 +277,8 @@ export class TaskServiceService {
     // @Cron(CronExpression.EVERY_MINUTE) // for a test development
     async every_day_at_9am_plus10() {
         await this.every_minutes(this.test_channel_id);
+        await this.every_minutes(this.dollrkurs_channel_id);
+
         // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
 
