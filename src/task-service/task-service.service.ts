@@ -311,6 +311,12 @@ export class TaskServiceService {
         await this.CBU_screenshot(this.dollrkurs_channel_id);
     }
 
+    // // test every minute cron
+    // @Cron(CronExpression.EVERY_30_SECONDS)
+    // async every_minute_test() {
+    //     await this.CBU_screenshot(this.test_channel_id);
+    // }
+
     /**
      * Every hour real working cron
      */
@@ -406,8 +412,11 @@ export class TaskServiceService {
                     )} (${sign}${r.change})  ${arrow}`;
                 });
 
+                const usd_direction =
+                    rates[0]?.direction === 'up' ? "ko'tarildi" : 'tushdi';
+
                 const caption =
-                    `<b>🏛 Markaziy bank kurslari</b>\n\n` +
+                    `<b>🏛 Dollarning rasmiy kursi ${usd_direction}</b>\n\n` +
                     lines.join('\n') +
                     `\n\n@dollrkurs`;
 
