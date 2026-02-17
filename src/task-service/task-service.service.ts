@@ -60,7 +60,8 @@ export class TaskServiceService {
     // }
 
     private test_channel_id = -1001311323927;
-    private dollrkurs_channel_id = -1002929234941;
+    private dollrkurs_uzb_channel_id = -1002929234941;
+    private dollrkurs_channel_id = ;
 
     // @Cron(CronExpression.EVERY_DAY_AT_5AM)
     // async backup_db() {
@@ -165,6 +166,7 @@ export class TaskServiceService {
         chatId: number,
         sending_time: string,
         is_send_best5: boolean,
+        channel_username: string,
     ) {
         const fmt = (v: unknown) => {
             const n = Number(v);
@@ -217,14 +219,14 @@ export class TaskServiceService {
                 `<b>${sending_time} holatiga banklarda AQSh dollari kursi</b>\n\n` +
                 `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
                 `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
-                `\n\n@dollrkurs`;
+                `\n\n@${channel_username}`;
 
             // caption (HTML)
             const best_5_caption =
                 `<b>${sending_time} holatiga ENG QULAY kurslar</b>\n\n` +
                 `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
                 `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
-                `\n\n@dollrkurs`;
+                `\n\n@${channel_username}`;
 
             // send photo with caption
             await this.bot.telegram.sendPhoto(
@@ -275,6 +277,7 @@ export class TaskServiceService {
     // every day at 8am cron
     @Cron('0 8 * * *', { timeZone: 'Asia/Tashkent' }) // 8:00 AM
     async every_day_at_8am() {
+        await this.send_currency_rates_string1(this.dollrkurs_uzb_channel_id);
         await this.send_currency_rates_string1(this.dollrkurs_channel_id);
         await this.send_currency_rates_string1(this.test_channel_id);
     }
@@ -282,27 +285,52 @@ export class TaskServiceService {
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
     // @Cron(CronExpression.EVERY_MINUTE) // for a test development
     async every_day_at_9am_plus10() {
-        await this.every_minutes(this.dollrkurs_channel_id, '9:00', true);
+        await this.every_minutes(
+            this.dollrkurs_uzb_channel_id,
+            '9:00',
+            true,
+            'dollar_kurs_uzb',
+        );
 
-        // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
+          await this.every_minutes(
+            this.dollrkurs_channel_id,
+            '9:00',
+            true,
+            'dollrkurs',
+        );
+
+        // await this.sending_currency_rates_string(this.dollrkurs_uzb_channel_id);
     }
 
     // @Cron('11 11 * * *', { timeZone: 'Asia/Tashkent' }) // 11:11 AM Tashkent time
     // async every_day_at_11_11_am() {
-    //     await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+    //     await this.send_pragnoz_call_auction(this.dollrkurs_uzb_channel_id);
     //     await this.send_pragnoz_call_auction(this.test_channel_id);
     // }
 
     // @Cron('40 10 * * *', { timeZone: 'Asia/Tashkent' }) // 10:40 AM Tashkent time
     // async every_day_at_10_40_am() {
-    //     // await this.send_pragnoz_call_auction(this.dollrkurs_channel_id);
+    //     // await this.send_pragnoz_call_auction(this.dollrkurs_uzb_channel_id);
     //     await this.send_pragnoz_call_auction(this.test_channel_id);
     // }
 
     @Cron('10 14 * * *')
     async every_day_at_14_10() {
         try {
-            await this.every_minutes(this.dollrkurs_channel_id, '14:00', false);
+            await this.every_minutes(
+                this.dollrkurs_uzb_channel_id,
+                '14:00',
+                false,
+                'dollar_kurs_uzb',
+            );
+
+            await this.every_minutes(
+                this.dollrkurs_channel_id,
+                '14:00',
+                false,
+                'dollrkurs',
+            );
+
         } catch (err) {
             console.error('[every_day_at_14_10] error:', err);
         }
@@ -312,6 +340,7 @@ export class TaskServiceService {
     async every_day_at_4pm_plus10() {
         // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
         await this.CBU_screenshot(this.test_channel_id);
+        await this.CBU_screenshot(this.dollrkurs_uzb_channel_id);
         await this.CBU_screenshot(this.dollrkurs_channel_id);
     }
 
@@ -327,7 +356,12 @@ export class TaskServiceService {
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
         await this.send_pragnoz_call_auction(this.test_channel_id);
-        await this.every_minutes(this.test_channel_id, '15:00', true);
+        await this.every_minutes(
+            this.test_channel_id,
+            '15:00',
+            true,
+            'dollar_kurs_uzb',
+        );
         await this.send_currency_rates_string1(this.test_channel_id);
         await this.send_currency_rates_string2(this.test_channel_id);
     }
