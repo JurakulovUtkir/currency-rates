@@ -61,7 +61,7 @@ export class TaskServiceService {
 
     private test_channel_id = -1001311323927;
     private dollrkurs_uzb_channel_id = -1002929234941;
-    private dollrkurs_channel_id = ;
+    private dollrkurs_channel_id = -1001417795097;
 
     // @Cron(CronExpression.EVERY_DAY_AT_5AM)
     // async backup_db() {
@@ -292,7 +292,7 @@ export class TaskServiceService {
             'dollar_kurs_uzb',
         );
 
-          await this.every_minutes(
+        await this.every_minutes(
             this.dollrkurs_channel_id,
             '9:00',
             true,
@@ -330,7 +330,6 @@ export class TaskServiceService {
                 false,
                 'dollrkurs',
             );
-
         } catch (err) {
             console.error('[every_day_at_14_10] error:', err);
         }
