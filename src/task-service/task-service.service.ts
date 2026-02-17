@@ -233,7 +233,7 @@ export class TaskServiceService {
                 { caption, parse_mode: 'HTML' },
             );
 
-            if (!is_send_best5) {
+            if (is_send_best5) {
                 // send photo with caption
                 await this.bot.telegram.sendPhoto(
                     chatId,
