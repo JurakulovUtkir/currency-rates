@@ -161,7 +161,11 @@ export class TaskServiceService {
         }));
     }
 
-    async every_minutes(chatId: number) {
+    async every_minutes(
+        chatId: number,
+        sending_time: string,
+        is_send_best5: boolean,
+    ) {
         const fmt = (v: unknown) => {
             const n = Number(v);
             return Number.isFinite(n) ? n.toFixed(2) : '-';
@@ -210,14 +214,14 @@ export class TaskServiceService {
 
             // caption (HTML)
             const caption =
-                '<b>9:00 holatiga banklarda AQSh dollari kursi</b>\n\n' +
+                `<b>${sending_time} holatiga banklarda AQSh dollari kursi</b>\n\n` +
                 `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
                 `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
                 `\n\n@dollrkurs`;
 
             // caption (HTML)
             const best_5_caption =
-                '<b>9:00 holatiga ENG QULAY kurslar</b>\n\n' +
+                `<b>${sending_time} holatiga ENG QULAY kurslar</b>\n\n` +
                 `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
                 `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
                 `\n\n@dollrkurs`;
@@ -229,12 +233,14 @@ export class TaskServiceService {
                 { caption, parse_mode: 'HTML' },
             );
 
-            // send photo with caption
-            await this.bot.telegram.sendPhoto(
-                chatId,
-                { source: fs.createReadStream(best5.filePath) },
-                { caption: best_5_caption, parse_mode: 'HTML' },
-            );
+            if (!is_send_best5) {
+                // send photo with caption
+                await this.bot.telegram.sendPhoto(
+                    chatId,
+                    { source: fs.createReadStream(best5.filePath) },
+                    { caption: best_5_caption, parse_mode: 'HTML' },
+                );
+            }
 
             // best-effort cleanup
             fs.promises
@@ -276,8 +282,7 @@ export class TaskServiceService {
     @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
     // @Cron(CronExpression.EVERY_MINUTE) // for a test development
     async every_day_at_9am_plus10() {
-        await this.every_minutes(this.test_channel_id);
-        await this.every_minutes(this.dollrkurs_channel_id);
+        await this.every_minutes(this.dollrkurs_channel_id, '9:00', true);
 
         // await this.sending_currency_rates_string(this.dollrkurs_channel_id);
     }
@@ -297,8 +302,7 @@ export class TaskServiceService {
     @Cron('10 14 * * *')
     async every_day_at_14_10() {
         try {
-            await this.every_minutes(this.test_channel_id);
-            await this.every_minutes(this.dollrkurs_channel_id);
+            await this.every_minutes(this.dollrkurs_channel_id, '14:00', false);
         } catch (err) {
             console.error('[every_day_at_14_10] error:', err);
         }
@@ -323,7 +327,7 @@ export class TaskServiceService {
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
         await this.send_pragnoz_call_auction(this.test_channel_id);
-        await this.every_minutes(this.test_channel_id);
+        await this.every_minutes(this.test_channel_id, '15:00', true);
         await this.send_currency_rates_string1(this.test_channel_id);
         await this.send_currency_rates_string2(this.test_channel_id);
     }
