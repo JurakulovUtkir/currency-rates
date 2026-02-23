@@ -282,7 +282,8 @@ export class TaskServiceService {
         await this.send_currency_rates_string1(this.test_channel_id);
     }
 
-    @Cron('10 9 * * *', { timeZone: 'Asia/Tashkent' }) // 9:10 AM
+    // make it only weekdays
+    @Cron('10 9 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 9:10 AM, only weekdays
     // @Cron(CronExpression.EVERY_MINUTE) // for a test development
     async every_day_at_9am_plus10() {
         await this.every_minutes(
@@ -314,7 +315,8 @@ export class TaskServiceService {
     //     await this.send_pragnoz_call_auction(this.test_channel_id);
     // }
 
-    @Cron('10 14 * * *')
+    // make it only weekdays
+    @Cron('10 14 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 2:10 PM, only weekdays
     async every_day_at_14_10() {
         try {
             await this.every_minutes(
@@ -335,7 +337,8 @@ export class TaskServiceService {
         }
     }
 
-    @Cron('10 16 * * *', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
+    //make it only weekdays
+    @Cron('10 16 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
         // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
         await this.CBU_screenshot(this.test_channel_id);
