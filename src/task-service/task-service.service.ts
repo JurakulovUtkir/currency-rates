@@ -167,6 +167,7 @@ export class TaskServiceService {
         sending_time: string,
         is_send_best5: boolean,
         channel_username: string,
+        theme?: 'light' | 'dark' | 'kommers',
     ) {
         const fmt = (v: unknown) => {
             const n = Number(v);
@@ -203,6 +204,7 @@ export class TaskServiceService {
                     outputDir: path.resolve(process.cwd(), 'images'),
                     // titleLine1: 'Актуальный обменный',
                     // titleLine2: 'курс в банках Узбекистана',
+                    theme: theme,
                 },
             );
 
@@ -212,6 +214,7 @@ export class TaskServiceService {
                 outputDir: path.resolve(process.cwd(), 'images'),
                 // titleLine1: 'Актуальный обменный',
                 // titleLine2: 'курс в банках Узбекистана',
+                theme: theme,
             });
 
             // caption (HTML)
@@ -291,6 +294,7 @@ export class TaskServiceService {
             '9:00',
             true,
             'dollar_kurs_uzb',
+            'dark',
         );
 
         await this.every_minutes(
@@ -324,6 +328,7 @@ export class TaskServiceService {
                 '14:00',
                 false,
                 'dollar_kurs_uzb',
+                'dark',
             );
 
             await this.every_minutes(
@@ -367,6 +372,20 @@ export class TaskServiceService {
         await this.send_currency_rates_string1(this.test_channel_id);
         await this.send_currency_rates_string2(this.test_channel_id);
     }
+
+    // /**
+    //  * Every minutes cron for testing stage
+    //  */
+    // @Cron(CronExpression.EVERY_MINUTE)
+    // async every_minute_test() {
+    //     await this.every_minutes(
+    //         this.test_channel_id,
+    //         '15:00',
+    //         true,
+    //         'dollar_kurs_uzb',
+    //         'dark', // its theme param for image generator, it can be 'light' | 'dark' | 'kommers' and optional, if not provided it will be 'light' by default
+    //     );
+    // }
 
     async CBU_screenshot(chat_id: number) {
         try {
