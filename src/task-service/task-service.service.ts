@@ -280,7 +280,7 @@ export class TaskServiceService {
     // every day at 8am cron
     @Cron('0 8 * * *', { timeZone: 'Asia/Tashkent' }) // 8:00 AM
     async every_day_at_8am() {
-        await this.send_currency_rates_string1(this.dollrkurs_uzb_channel_id);
+        await this.send_currency_rates_string2(this.dollrkurs_uzb_channel_id);
         await this.send_currency_rates_string1(this.dollrkurs_channel_id);
         await this.send_currency_rates_string1(this.test_channel_id);
     }
@@ -828,7 +828,9 @@ $ 1 AQSh dollari
         )})
 🇨🇳 CNY — ${data.officialRates.CNY.rate} сўм (${this.formatDiff(
             data.officialRates.CNY.diff,
-        )}).`;
+        )}).
+
+@dollar_kurs_uzb`;
     }
 
     /**
