@@ -61,3 +61,20 @@ export interface RequiredCurrencies {
     TRY: CbuRate;
     CNY: CbuRate;
 }
+
+export const Translations = {
+    uz: {
+        caption_kurs: 'holatiga banklarda AQSh dollari kursi',
+        caption_bank:
+            "Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin",
+        caption_bank_websites: 'Banklar sayti',
+        best_caption_kurs: 'holatiga ENG QULAY kurslar',
+    },
+    kril: {
+        caption_kurs: 'ҳолатига банкларда АҚШ доллари курси',
+        caption_bank:
+            'Изоҳ: Банкка боришдан аввал банкнинг сайти орқали текширинг. Ўзгариш бўлиши мумкин',
+        caption_bank_websites: 'Банклар сайти',
+        best_caption_kurs: 'ҳолатига ЭНГ ҚУЛАЙ курслар',
+    },
+};

@@ -36,7 +36,7 @@ import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
 import { In, Not, Repository } from 'typeorm';
-import { CurrencyData, RequiredCurrencies } from './utils';
+import { CurrencyData, RequiredCurrencies, Translations } from './utils';
 
 dotenv.config();
 // const execPromise = promisify(exec);
@@ -164,6 +164,7 @@ export class TaskServiceService {
 
     async every_minutes(
         chatId: number,
+        language: 'uz' | 'kril',
         sending_time: string,
         is_send_best5: boolean,
         channel_username: string,
@@ -219,16 +220,16 @@ export class TaskServiceService {
 
             // caption (HTML)
             const caption =
-                `<b>${sending_time} holatiga banklarda AQSh dollari kursi</b>\n\n` +
-                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
-                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `<b>${sending_time} ${Translations[language].caption_kurs}</b>\n\n` +
+                `<i>${Translations[language].caption_bank}</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">${Translations[language].caption_bank_websites}</a>` +
                 `\n\n@${channel_username}`;
 
             // caption (HTML)
             const best_5_caption =
-                `<b>${sending_time} holatiga ENG QULAY kurslar</b>\n\n` +
-                `<i>Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin</i>` +
-                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">Banklar sayti</a>` +
+                `<b>${sending_time} ${Translations[language].best_caption_kurs}</b>\n\n` +
+                `<i>${Translations[language].caption_bank}</i>` +
+                `\n\n<a href="https://telegra.ph/Valyuta-Kurslari-10-15">${Translations[language].caption_bank_websites}</a>` +
                 `\n\n@${channel_username}`;
 
             // send photo with caption
@@ -291,6 +292,7 @@ export class TaskServiceService {
     async every_day_at_9am_plus10() {
         await this.every_minutes(
             this.dollrkurs_uzb_channel_id,
+            'kril',
             '9:00',
             true,
             'dollar_kurs_uzb',
@@ -299,6 +301,7 @@ export class TaskServiceService {
 
         await this.every_minutes(
             this.dollrkurs_channel_id,
+            'uz',
             '9:00',
             true,
             'dollrkurs',
@@ -325,6 +328,7 @@ export class TaskServiceService {
         try {
             await this.every_minutes(
                 this.dollrkurs_uzb_channel_id,
+                'kril',
                 '14:00',
                 false,
                 'dollar_kurs_uzb',
@@ -333,6 +337,7 @@ export class TaskServiceService {
 
             await this.every_minutes(
                 this.dollrkurs_channel_id,
+                'uz',
                 '14:00',
                 false,
                 'dollrkurs',
@@ -354,7 +359,14 @@ export class TaskServiceService {
     // // test every minute cron
     // @Cron(CronExpression.EVERY_30_SECONDS)
     // async every_minute_test() {
-    //     await this.CBU_screenshot(this.test_channel_id);
+    //     await this.every_minutes(
+    //         this.test_channel_id,
+    //         'kril',
+    //         '15:00',
+    //         true,
+    //         'dollar_kurs_uzb',
+    //         'dark',
+    //     );
     // }
 
     /**
@@ -365,6 +377,7 @@ export class TaskServiceService {
         await this.send_pragnoz_call_auction(this.test_channel_id);
         await this.every_minutes(
             this.test_channel_id,
+            'kril',
             '15:00',
             true,
             'dollar_kurs_uzb',
