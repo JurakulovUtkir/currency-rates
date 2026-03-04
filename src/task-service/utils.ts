@@ -69,6 +69,9 @@ export const Translations = {
             "Izoh: Bankka borishdan avval bankning sayti orqali tekshiring. O'zgarish bo'lishi mumkin",
         caption_bank_websites: 'Banklar sayti',
         best_caption_kurs: 'holatiga ENG QULAY kurslar',
+        screen_title: 'Dollarning rasmiy kursi',
+        up: "ko'tarildi",
+        down: 'tushdi',
     },
     kril: {
         caption_kurs: 'ҳолатига банкларда АҚШ доллари курси',
@@ -76,5 +79,8 @@ export const Translations = {
             'Изоҳ: Банкка боришдан аввал банкнинг сайти орқали текширинг. Ўзгариш бўлиши мумкин',
         caption_bank_websites: 'Банклар сайти',
         best_caption_kurs: 'ҳолатига ЭНГ ҚУЛАЙ курслар',
+        screen_title: 'Долларнинг расмий курси',
+        up: 'кўтарилди',
+        down: 'тушди',
     },
 };

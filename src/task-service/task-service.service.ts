@@ -351,22 +351,46 @@ export class TaskServiceService {
     @Cron('10 16 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
         // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
-        await this.CBU_screenshot(this.test_channel_id);
-        await this.CBU_screenshot(this.dollrkurs_uzb_channel_id);
-        await this.CBU_screenshot(this.dollrkurs_channel_id);
+
+        // test channel
+        await this.CBU_screenshot(
+            this.test_channel_id,
+            '@our_testing_channel_spprt',
+            'kril',
+        );
+
+        // real channels
+        await this.CBU_screenshot(
+            this.dollrkurs_uzb_channel_id,
+            '@dollar_kurs_uzb',
+            'kril',
+        );
+
+        // real channels
+        await this.CBU_screenshot(
+            this.dollrkurs_channel_id,
+            '@dollrkurs',
+            'uz',
+        );
     }
 
     // // test every minute cron
     // @Cron(CronExpression.EVERY_30_SECONDS)
     // async every_minute_test() {
-    //     await this.every_minutes(
+    //     await this.CBU_screenshot(
     //         this.test_channel_id,
-    //         'kril',
-    //         '15:00',
-    //         true,
-    //         'dollar_kurs_uzb',
-    //         'dark',
+    //         '@our_testing_channel_spprt',
+    //         'uz',
     //     );
+
+    //     // await this.every_minutes(
+    //     //     this.test_channel_id,
+    //     //     'kril',
+    //     //     '15:00',
+    //     //     true,
+    //     //     'dollar_kurs_uzb',
+    //     //     'dark',
+    //     // );
     // }
 
     /**
@@ -400,7 +424,11 @@ export class TaskServiceService {
     //     );
     // }
 
-    async CBU_screenshot(chat_id: number) {
+    async CBU_screenshot(
+        chat_id: number,
+        username: string,
+        language: 'uz' | 'kril',
+    ) {
         try {
             const browser = await puppeteer.launch({
                 headless: true,
@@ -485,12 +513,14 @@ export class TaskServiceService {
                 });
 
                 const usd_direction =
-                    rates[0]?.direction === 'up' ? "ko'tarildi" : 'tushdi';
+                    rates[0]?.direction === 'up'
+                        ? Translations[language].up
+                        : Translations[language].down;
 
                 const caption =
-                    `<b>🏛 Dollarning rasmiy kursi ${usd_direction}</b>\n\n` +
+                    `<b>🏛 ${Translations[language].screen_title} ${usd_direction}</b>\n\n` +
                     lines.join('\n') +
-                    `\n\n@dollrkurs`;
+                    `\n\n${username}`;
 
                 await this.bot.telegram.sendPhoto(
                     chat_id,
