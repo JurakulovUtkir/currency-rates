@@ -377,20 +377,7 @@ export class TaskServiceService {
     // // test every minute cron
     // @Cron(CronExpression.EVERY_30_SECONDS)
     // async every_minute_test() {
-    //     await this.CBU_screenshot(
-    //         this.test_channel_id,
-    //         '@our_testing_channel_spprt',
-    //         'uz',
-    //     );
-
-    //     // await this.every_minutes(
-    //     //     this.test_channel_id,
-    //     //     'kril',
-    //     //     '15:00',
-    //     //     true,
-    //     //     'dollar_kurs_uzb',
-    //     //     'dark',
-    //     // );
+    //     await this.loading_brb();
     // }
 
     /**
