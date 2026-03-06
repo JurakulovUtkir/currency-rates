@@ -31,6 +31,7 @@ export async function getCurrencyRatesFromBrb(): Promise<CurrencyData[]> {
         const result: CurrencyResponse = await response.json();
 
         if (result.success) {
+            console.log(result.data);
             return result.data;
         } else {
             throw new Error('Failed to fetch currency data successfully.');
