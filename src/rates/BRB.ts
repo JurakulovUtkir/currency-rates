@@ -1,43 +1,91 @@
-interface CurrencyData {
-    code: string;
-    icon: string;
-    buy: number;
-    sell: number;
-    buy_change: number;
-    sell_change: number;
-}
+// src/rates/brb.puppeteer.ts
+import puppeteer, { Browser } from 'puppeteer';
 
-interface CurrencyResponse {
-    success: boolean;
-    updated_at: string;
-    data: CurrencyData[];
-}
+export type OfficeRate = { buy: number | null; sell: number | null };
+export type Office = Record<string, OfficeRate>;
 
-export async function getCurrencyRatesFromBrb(): Promise<CurrencyData[]> {
-    const requestOptions: RequestInit = {
-        method: 'GET',
-        redirect: 'follow',
-    };
+const toNum = (t?: string | null) => {
+    if (!t) return null;
+    const n = parseInt(t.replace(/\s+/g, '').trim(), 10);
+    return Number.isFinite(n) ? n : null;
+};
 
-    const url = 'https://brb.uz/api/currency/compare';
+export async function fetchBrbOfficeRatesPptr(): Promise<{
+    bank: 'BRB';
+    source: string;
+    fetchedAt: string;
+    office: Office;
+}> {
+    const source = 'https://brb.uz/';
+    let browser: Browser | null = null;
 
     try {
-        const response = await fetch(url, requestOptions);
+        browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
 
-        if (!response.ok) {
-            throw new Error(`Error fetching data: ${response.statusText}`);
-        }
+        const page = await browser.newPage();
+        await page.setUserAgent(
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+        );
+        await page.setViewport({ width: 1366, height: 900 });
+        await page.goto(source, {
+            waitUntil: 'domcontentloaded',
+            timeout: 60_000,
+        });
 
-        const result: CurrencyResponse = await response.json();
+        // Wait until the table is hydrated
+        await page.waitForSelector('#currency-table-body tr td.currency-name', {
+            timeout: 60_000,
+        });
 
-        if (result.success) {
-            console.log(result.data);
-            return result.data;
-        } else {
-            throw new Error('Failed to fetch currency data successfully.');
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        throw error; // Rethrow error for further handling
+        const office = await page.evaluate(() => {
+            const out: Record<
+                string,
+                { buy: number | null; sell: number | null }
+            > = {};
+
+            const parseIntSafe = (t?: string | null) => {
+                if (!t) return null;
+                const n = parseInt(t.replace(/\s+/g, '').trim(), 10);
+                return Number.isFinite(n) ? n : null;
+            };
+
+            const rows = document.querySelectorAll<HTMLTableRowElement>(
+                '#currency-table-body tr',
+            );
+
+            rows.forEach((row) => {
+                const tds = row.querySelectorAll('td');
+                if (tds.length < 3) return;
+
+                // Use img alt to get code — avoids "USD(BRB mobile)" text noise
+                const code = tds[0]
+                    ?.querySelector('img')
+                    ?.getAttribute('alt')
+                    ?.trim()
+                    .toUpperCase();
+
+                if (!code || code.includes('(')) return; // skip mobile rows
+                if (out[code]) return; // first row wins
+
+                out[code] = {
+                    buy: parseIntSafe(tds[1]?.textContent),
+                    sell: parseIntSafe(tds[2]?.textContent),
+                };
+            });
+
+            return out;
+        });
+
+        return {
+            bank: 'BRB',
+            source,
+            fetchedAt: new Date().toISOString(),
+            office,
+        };
+    } finally {
+        await browser?.close().catch(() => {});
     }
 }

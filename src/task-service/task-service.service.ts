@@ -11,7 +11,8 @@ import { getAgrobankExchangeRates } from 'src/rates/agrobank';
 import { getAlokabankExchangeRates } from 'src/rates/aloqabank';
 import { getExchangeRatesFromAnorbank } from 'src/rates/anorbank';
 import { fetchAsakaCurrencyListAxios } from 'src/rates/asakabank';
-import { getCurrencyRatesFromBrb } from 'src/rates/BRB';
+// import { getCurrencyRatesFromBrb } from 'src/rates/BRB';
+import { fetchBrbOfficeRatesPptr } from 'src/rates/BRB';
 import { CbuRate, fetchCbuRates } from 'src/rates/cbu';
 import { getDavrbankRates } from 'src/rates/davrbank';
 import { fetchGarantbankOfficeRates } from 'src/rates/garant.bank';
@@ -1758,52 +1759,41 @@ $ 1 AQSh dollari
 
     async loading_brb() {
         try {
-            // Fetch currency data from BRB
-            const data = await getCurrencyRatesFromBrb();
+            const { office } = await fetchBrbOfficeRatesPptr();
 
-            // Helper function to process currency data
             const processCurrency = async (
-                currencyData: any,
+                currencyData:
+                    | { buy: number | null; sell: number | null }
+                    | undefined,
                 currency: string,
             ) => {
-                if (currencyData) {
-                    const data = {
-                        currency,
-                        bank: Bank.BRB,
-                        buy: (currencyData.buy / 100).toString(), // Ensure the rate is a string
-                        sell: (currencyData.sell / 100).toString(),
-                    };
+                if (!currencyData?.buy || !currencyData?.sell) return;
 
-                    const existingCurrency =
-                        await this.ratesRepository.findOneBy({
-                            currency,
-                            bank: Bank.BRB,
-                        });
+                const data = {
+                    currency,
+                    bank: Bank.BRB,
+                    buy: currencyData.buy.toString(),
+                    sell: currencyData.sell.toString(),
+                };
 
-                    if (existingCurrency) {
-                        await this.ratesRepository.update(
-                            existingCurrency.id,
-                            data,
-                        );
-                    } else {
-                        await this.ratesRepository.save(data);
-                    }
+                const existingCurrency = await this.ratesRepository.findOneBy({
+                    currency,
+                    bank: Bank.BRB,
+                });
+
+                if (existingCurrency) {
+                    await this.ratesRepository.update(
+                        existingCurrency.id,
+                        data,
+                    );
+                } else {
+                    await this.ratesRepository.save(data);
                 }
             };
 
-            // Process USD, EUR, and RUB currencies
-            await processCurrency(
-                data.find((rate) => rate.code === 'USD'),
-                Currency.USD,
-            );
-            await processCurrency(
-                data.find((rate) => rate.code === 'EUR'),
-                Currency.EUR,
-            );
-            await processCurrency(
-                data.find((rate) => rate.code === 'RUB'),
-                Currency.RUB,
-            );
+            await processCurrency(office['USD'], Currency.USD);
+            await processCurrency(office['EUR'], Currency.EUR);
+            await processCurrency(office['RUB'], Currency.RUB);
 
             console.log('Currency rates updated successfully from BRB');
         } catch (error) {

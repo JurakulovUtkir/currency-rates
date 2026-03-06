@@ -31,14 +31,8 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api', app, document);
 
-    // log some data from testing bank
-    // const data = await fetchSqbExchangeRates();
-    // console.log(data);
-
-    // const rate = await getCentralBankRate();
-    // console.log(rate);
-
-    // console.log(Date.now().toLocaleString());
+    // const data = await fetchBrbOfficeRatesPptr();
+    // console.log('BRB Office Rates:', data);
 
     await app.listen(process.env.PORT);
 }
