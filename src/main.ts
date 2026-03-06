@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
+import { fetchTbcBankOfficeRates } from './rates/TBC';
 dotenv.config();
 
 async function bootstrap() {
@@ -33,6 +34,10 @@ async function bootstrap() {
 
     // const data = await fetchBrbOfficeRatesPptr();
     // console.log('BRB Office Rates:', data);
+
+    // tbc test
+    const tbcData = await fetchTbcBankOfficeRates();
+    console.log('TBC Office Rates:', tbcData);
 
     await app.listen(process.env.PORT);
 }
