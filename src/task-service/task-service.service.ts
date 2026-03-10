@@ -923,7 +923,7 @@ $ 1 AQSh dollari
             this.loading_poytaxtbank(),
             this.loading_agrobank(),
             this.loading_asakabank(),
-            this.loading_brb(),
+            // this.loading_brb(),
             this.loading_tengebank(),
             this.loading_hayotbank(),
             this.loading_hamkorbank(),
