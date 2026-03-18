@@ -288,9 +288,9 @@ export class TaskServiceService {
     }
 
     // make it only weekdays
-    @Cron('10 9 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 9:10 AM, only weekdays
+    @Cron('20 9 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 9:20 AM, only weekdays
     // @Cron(CronExpression.EVERY_MINUTE) // for a test development
-    async every_day_at_9am_plus10() {
+    async every_day_at_9am_plus20() {
         await this.every_minutes(
             this.dollrkurs_uzb_channel_id,
             'kril',
