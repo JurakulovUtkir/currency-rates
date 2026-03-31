@@ -383,22 +383,22 @@ export class TaskServiceService {
         }
     }
 
-    // test every minute cron
-    @Cron(CronExpression.EVERY_30_SECONDS)
-    async every_minute_test() {
-        if (this.cbuScreenshotRunning) return;
-        this.cbuScreenshotRunning = true;
-        try {
-            // test channel
-            await this.CBU_screenshot(
-                this.test_channel_id,
-                '@our_testing_channel_spprt',
-                'kril',
-            );
-        } finally {
-            this.cbuScreenshotRunning = false;
-        }
-    }
+    // // test every minute cron
+    // @Cron(CronExpression.EVERY_30_SECONDS)
+    // async every_minute_test() {
+    //     if (this.cbuScreenshotRunning) return;
+    //     this.cbuScreenshotRunning = true;
+    //     try {
+    //         // test channel
+    //         await this.CBU_screenshot(
+    //             this.test_channel_id,
+    //             '@our_testing_channel_spprt',
+    //             'kril',
+    //         );
+    //     } finally {
+    //         this.cbuScreenshotRunning = false;
+    //     }
+    // }
 
     /**
      * Every hour real working cron
