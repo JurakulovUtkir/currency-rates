@@ -60,6 +60,8 @@ export class TaskServiceService {
     //     return `PGPASSWORD="${process.env.DB_PASSWORD}" pg_dump -h ${host} -U ${user} -d ${db} -c > ${filePath}`;
     // }
 
+    private cbuScreenshotRunning = false;
+
     private test_channel_id = -1001311323927;
     private dollrkurs_uzb_channel_id = -1002929234941;
     private dollrkurs_channel_id = -1001417795097;
@@ -351,35 +353,52 @@ export class TaskServiceService {
     //make it only weekdays
     @Cron('10 16 * * 1-5', { timeZone: 'Asia/Tashkent' }) // 4:10 PM
     async every_day_at_4pm_plus10() {
-        // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
+        if (this.cbuScreenshotRunning) return;
+        this.cbuScreenshotRunning = true;
+        try {
+            // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
 
-        // test channel
-        await this.CBU_screenshot(
-            this.test_channel_id,
-            '@our_testing_channel_spprt',
-            'kril',
-        );
+            // test channel
+            await this.CBU_screenshot(
+                this.test_channel_id,
+                '@our_testing_channel_spprt',
+                'kril',
+            );
 
-        // real channels
-        await this.CBU_screenshot(
-            this.dollrkurs_uzb_channel_id,
-            '@dollar_kurs_uzb',
-            'kril',
-        );
+            // real channels
+            await this.CBU_screenshot(
+                this.dollrkurs_uzb_channel_id,
+                '@dollar_kurs_uzb',
+                'kril',
+            );
 
-        // real channels
-        await this.CBU_screenshot(
-            this.dollrkurs_channel_id,
-            '@dollrkurs',
-            'uz',
-        );
+            // real channels
+            await this.CBU_screenshot(
+                this.dollrkurs_channel_id,
+                '@dollrkurs',
+                'uz',
+            );
+        } finally {
+            this.cbuScreenshotRunning = false;
+        }
     }
 
-    // // test every minute cron
-    // @Cron(CronExpression.EVERY_30_SECONDS)
-    // async every_minute_test() {
-    //     await this.loading_brb();
-    // }
+    // test every minute cron
+    @Cron(CronExpression.EVERY_30_SECONDS)
+    async every_minute_test() {
+        if (this.cbuScreenshotRunning) return;
+        this.cbuScreenshotRunning = true;
+        try {
+            // test channel
+            await this.CBU_screenshot(
+                this.test_channel_id,
+                '@our_testing_channel_spprt',
+                'kril',
+            );
+        } finally {
+            this.cbuScreenshotRunning = false;
+        }
+    }
 
     /**
      * Every hour real working cron
@@ -432,59 +451,178 @@ export class TaskServiceService {
             try {
                 const page = await browser.newPage();
                 await page.setViewport({
-                    width: 1280,
-                    height: 800,
-                    deviceScaleFactor: 3, // 3x resolution (like Retina)
+                    width: 414,
+                    height: 896,
+                    deviceScaleFactor: 3,
                 });
                 await page.goto('https://cbu.uz/uz/', {
                     waitUntil: 'networkidle2',
                     timeout: 30000,
                 });
 
-                // Hide items after first 3 (keep only USD, EUR, RUB)
-                await page.$$eval('.exchange__item', (items) => {
-                    items.forEach((item, i) => {
-                        if (i >= 3)
-                            (item as HTMLElement).style.display = 'none';
-                    });
-                });
-
-                const element = await page.waitForSelector('.exchange__list');
-                await element.screenshot({
-                    path: screenshotPath,
-                    type: 'png', // PNG = lossless (best quality)
-                    omitBackground: true, // transparent background
-                });
-
-                // scrape only first 3 rates for caption
-                const rates = await page.$$eval('.exchange__item', (items) =>
-                    items.slice(0, 3).map((item) => {
-                        const currency =
-                            item.getAttribute('data-currency') ?? '';
-                        const valueText =
-                            item.querySelector('.exchange__item_value')
-                                ?.textContent ?? '';
-                        const shiftText =
-                            item.querySelector('.exchange__item_shift')
-                                ?.textContent ?? '';
-                        const isGreen = item
-                            .querySelector('.exchange__item_shift')
-                            ?.classList.contains('color_green');
-                        const rate =
-                            parseFloat(valueText.replace(/[^0-9.]/g, '')) || 0;
-                        const change =
-                            parseFloat(shiftText.replace(/[^0-9.-]/g, '')) || 0;
-                        return {
-                            currency,
-                            rate,
-                            change: Math.abs(change),
-                            direction: (isGreen ? 'up' : 'down') as
-                                | 'up'
-                                | 'down',
-                        };
-                    }),
+                await page.waitForSelector(
+                    '.exchange__item[data-currency="USD"]',
+                    {
+                        timeout: 10000,
+                    },
                 );
 
+                // 1) Ma'lumotlarni scrape qilish
+                const rates = await page.$$eval('.exchange__item', (items) => {
+                    const keep = ['USD', 'EUR', 'RUB'];
+                    return items
+                        .filter((item) =>
+                            keep.includes(
+                                item.getAttribute('data-currency') ?? '',
+                            ),
+                        )
+                        .map((item) => {
+                            const currency =
+                                item.getAttribute('data-currency') ?? '';
+                            const valueText =
+                                item.querySelector('.exchange__item_value')
+                                    ?.textContent ?? '';
+                            const shiftText =
+                                item.querySelector('.exchange__item_shift')
+                                    ?.textContent ?? '';
+                            const isGreen = item
+                                .querySelector('.exchange__item_shift')
+                                ?.classList.contains('color_green');
+                            const afterEq = valueText.split('=')[1] ?? '';
+                            const rate =
+                                parseFloat(afterEq.replace(/[^0-9.]/g, '')) ||
+                                0;
+                            const change =
+                                parseFloat(
+                                    shiftText.replace(/[^0-9.-]/g, ''),
+                                ) || 0;
+                            return {
+                                currency,
+                                rate,
+                                change: Math.abs(change),
+                                direction: (isGreen ? 'up' : 'down') as
+                                    | 'up'
+                                    | 'down',
+                            };
+                        });
+                });
+
+                // 2) O'zimiz chiroyli HTML yasab, shuni screenshot olamiz
+                const flags: Record<string, string> = {
+                    USD: 'https://flagcdn.com/w80/us.png',
+                    EUR: 'https://flagcdn.com/w80/eu.png',
+                    RUB: 'https://flagcdn.com/w80/ru.png',
+                };
+
+                const rowsHTML = rates
+                    .map((r) => {
+                        const arrow = r.direction === 'up' ? '▲' : '▼';
+                        const sign = r.direction === 'up' ? '+' : '-';
+                        const color =
+                            r.direction === 'up' ? '#16a34a' : '#dc2626';
+                        return `
+                        <div class="row">
+                            <img class="flag" src="${
+                                flags[r.currency] ?? ''
+                            }" alt="${r.currency}" />
+                            <div class="info">
+                                <span class="currency">${r.currency}</span>
+                                <span class="rate">${r.rate.toFixed(2)}</span>
+                            </div>
+                            <div class="change" style="color: ${color}">
+                                <span>${sign}${r.change.toFixed(2)}</span>
+                                <span class="arrow">${arrow}</span>
+                            </div>
+                        </div>`;
+                    })
+                    .join('');
+
+                const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body {
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            background: #ffffff;
+                            padding: 20px;
+                            width: 520px;
+                        }
+                        .row {
+                            display: flex;
+                            align-items: center;
+                            padding: 18px 16px;
+                            border-bottom: 1px dashed #d1d5db;
+                        }
+                        .row:last-child {
+                            border-bottom: none;
+                        }
+                        .flag {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 50%;
+                            object-fit: cover;
+                            margin-right: 16px;
+                            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                        }
+                        .info {
+                            flex: 1;
+                            display: flex;
+                            align-items: baseline;
+                            gap: 8px;
+                        }
+                        .currency {
+                            font-size: 20px;
+                            font-weight: 700;
+                            color: #111827;
+                        }
+                        .rate {
+                            font-size: 20px;
+                            font-weight: 600;
+                            color: #111827;
+                        }
+                        .change {
+                            font-size: 17px;
+                            font-weight: 700;
+                            display: flex;
+                            align-items: center;
+                            gap: 6px;
+                            min-width: 100px;
+                            justify-content: flex-end;
+                        }
+                        .arrow {
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${rowsHTML}
+                </body>
+                </html>`;
+
+                // Yangi sahifa ochib, HTML ni render qilamiz
+                const renderPage = await browser.newPage();
+                await renderPage.setViewport({
+                    width: 520,
+                    height: 600,
+                    deviceScaleFactor: 3,
+                });
+                await renderPage.setContent(html, {
+                    waitUntil: 'networkidle0',
+                });
+
+                // Faqat body ni screenshot olamiz (ortiqcha bo'sh joy bo'lmasin)
+                const body = await renderPage.$('body');
+                await body!.screenshot({
+                    path: screenshotPath,
+                    type: 'png',
+                });
+
+                await renderPage.close();
+
+                // 3) Caption tayyorlash
                 const emoji: Record<string, string> = {
                     USD: '$',
                     EUR: '€',
@@ -523,7 +661,6 @@ export class TaskServiceService {
             console.error('[CBU_screenshot] error:', err);
         }
     }
-
     /**
      * Runs every weekday (Monday-Friday) at 10:30 AM
      * Cron format: second minute hour day month dayOfWeek
