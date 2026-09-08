@@ -171,6 +171,59 @@ export class TaskServiceService {
         }));
     }
 
+    /**
+     * Kurs necha soatdan keyin "eskirgan" hisoblanadi.
+     * Banklar soatiga bir marta yangilanadi, ya'ni 3 soat = 3 ta o'tkazib
+     * yuborilgan sikl.
+     */
+    private static readonly STALE_AFTER_HOURS = 3;
+
+    /**
+     * Eskirgan kurslarni logga yozadi. Rasmga hozircha ta'sir qilmaydi —
+     * avval qaysi banklar qanchalik tez-tez yiqilishini o'lchab olamiz.
+     *
+     * Ishonchli bo'lishi uchun BARCHA loaderlar mavjud qatorni update() bilan
+     * yozishi shart: save() qiymat o'zgarmaganda UPDATE yubormaydi va
+     * updated_at qotib qoladi (bank aslida muvaffaqiyatli o'qilgan bo'lsa ham).
+     */
+    private logStaleRates(rates: Rate[], context: string) {
+        const now = Date.now();
+
+        const stale = rates
+            .map((r) => ({
+                bank: String(r.bank),
+                hours: r.updated_at
+                    ? (now - new Date(r.updated_at).getTime()) / 3_600_000
+                    : null,
+            }))
+            .filter(
+                (x) =>
+                    x.hours === null ||
+                    x.hours > TaskServiceService.STALE_AFTER_HOURS,
+            )
+            .sort((a, b) => (b.hours ?? 1e9) - (a.hours ?? 1e9));
+
+        if (!stale.length) {
+            console.log(
+                `[${context}] Barcha ${rates.length} ta bank kursi yangi.`,
+            );
+            return;
+        }
+
+        const list = stale
+            .map(
+                (x) =>
+                    `${x.bank} (${
+                        x.hours === null ? 'sana yo\'q' : x.hours.toFixed(1) + ' soat'
+                    })`,
+            )
+            .join(', ');
+
+        console.warn(
+            `[${context}] ESKIRGAN KURS ${stale.length}/${rates.length}: ${list}`,
+        );
+    }
+
     async every_minutes(
         chatId: number,
         language: 'uz' | 'kril',
@@ -197,6 +250,8 @@ export class TaskServiceService {
                 console.warn('[every_minutes] No USD data available yet.');
                 return;
             }
+
+            this.logStaleRates(usdRates, 'every_minutes');
 
             // map entity -> image generator input
             const imgRates = usdRates.map((r) => ({
@@ -1690,8 +1745,23 @@ $ 1 AQSh dollari
                 buy: string | null;
             }>;
 
-            if (payloads.length) {
-                await this.ratesRepository.save(payloads);
+            // save() qiymat o'zgarmagan qatorlar uchun UPDATE yubormaydi va
+            // updated_at qotib qoladi, shuning uchun mavjudlari update() bilan
+            // yoziladi.
+            for (const p of payloads) {
+                if (p.id) {
+                    await this.ratesRepository.update(p.id, {
+                        sell: p.sell,
+                        buy: p.buy,
+                    });
+                } else {
+                    await this.ratesRepository.save({
+                        currency: p.currency,
+                        bank: p.bank,
+                        sell: p.sell,
+                        buy: p.buy,
+                    });
+                }
             }
 
             console.log('[NBU] Currency rates updated successfully.');
@@ -2368,11 +2438,13 @@ $ 1 AQSh dollari
                 });
 
                 if (existing) {
-                    existing.buy =
-                        buy != null ? String(buy) : existing.buy ?? null;
-                    existing.sell =
-                        sell != null ? String(sell) : existing.sell ?? null;
-                    await this.ratesRepository.save(existing);
+                    // update() ishlatiladi: save() qiymat o'zgarmasa UPDATE
+                    // yubormaydi va updated_at qotib qoladi.
+                    await this.ratesRepository.update(existing.id, {
+                        buy: buy != null ? String(buy) : existing.buy ?? null,
+                        sell:
+                            sell != null ? String(sell) : existing.sell ?? null,
+                    });
                 } else {
                     const row = this.ratesRepository.create({
                         currency,
@@ -2426,9 +2498,13 @@ $ 1 AQSh dollari
             });
 
             if (existing) {
-                existing.buy = data.buy;
-                existing.sell = data.sell;
-                await this.ratesRepository.save(existing);
+                // save() qiymat o'zgarmasa UPDATE yubormaydi va updated_at
+                // qotib qoladi — o'sha ustunga qarab "eskirgan" deb xulosa
+                // chiqarib bo'lmay qoladi. update() doim yozadi.
+                await this.ratesRepository.update(existing.id, {
+                    buy: data.buy,
+                    sell: data.sell,
+                });
             } else {
                 await this.ratesRepository.save(data as unknown as Rate);
             }
@@ -2469,9 +2545,12 @@ $ 1 AQSh dollari
                 });
 
                 if (existing) {
-                    existing.buy = data.buy;
-                    existing.sell = data.sell;
-                    await this.ratesRepository.save(existing);
+                    // update() ishlatiladi: save() qiymat o'zgarmasa UPDATE
+                    // yubormaydi va updated_at qotib qoladi.
+                    await this.ratesRepository.update(existing.id, {
+                        buy: data.buy,
+                        sell: data.sell,
+                    });
                 } else {
                     await this.ratesRepository.save(data as unknown as Rate);
                 }
@@ -2531,9 +2610,12 @@ $ 1 AQSh dollari
                 });
 
                 if (existing) {
-                    existing.buy = row.buy;
-                    existing.sell = row.sell;
-                    await this.ratesRepository.save(existing);
+                    // update() ishlatiladi: save() qiymat o'zgarmasa UPDATE
+                    // yubormaydi va updated_at qotib qoladi.
+                    await this.ratesRepository.update(existing.id, {
+                        buy: row.buy,
+                        sell: row.sell,
+                    });
                 } else {
                     await this.ratesRepository.save(row);
                 }
