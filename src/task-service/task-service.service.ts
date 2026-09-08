@@ -1982,10 +1982,28 @@ $ 1 AQSh dollari
                 rate: ReturnType<typeof norm> | undefined,
                 currency: string,
             ) => {
-                if (!rate) return;
-                const buyNum = rate.buy ?? rate.cbu;
-                const sellNum = rate.sell ?? rate.cbu;
-                if (buyNum == null && sellNum == null) return;
+                // Asakabank kursni e'lon qilmaganda API `purchase`/`sale`
+                // o'rniga "-" qaytaradi. Ilgari bunday holatda markaziy bank
+                // kursi (`rate_cb`) Asakabankning o'z kursi sifatida
+                // saqlanardi — ya'ni rasmda "Asakabank eng arzon" bo'lib
+                // ko'rinardi, aslida u yerda umuman kurs yo'q edi.
+                // Endi CBU ga qaytish yo'q: kurs yo'q bo'lsa qator o'chiriladi.
+                const buyNum = rate?.buy ?? null;
+                const sellNum = rate?.sell ?? null;
+
+                if (buyNum == null && sellNum == null) {
+                    const removed = await this.ratesRepository.delete({
+                        currency,
+                        bank: Bank.ASAKABANK,
+                    });
+
+                    if (removed.affected) {
+                        console.warn(
+                            `[ASAKABANK] ${currency} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                        );
+                    }
+                    return;
+                }
 
                 const data = {
                     currency,
@@ -2010,7 +2028,7 @@ $ 1 AQSh dollari
             await processCurrency(pick('EUR'), Currency.EUR);
             await processCurrency(pick('RUB'), Currency.RUB);
 
-            console.log('Asakabank (Individual) rates saved: USD/EUR/RUB');
+            console.log('Asakabank (Individual) rates processed: USD/EUR/RUB');
         } catch (error) {
             console.error('Error loading Asakabank rates:', error);
         }
