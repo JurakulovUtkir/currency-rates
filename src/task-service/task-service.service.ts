@@ -37,7 +37,13 @@ import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
 import { In, Not, Repository } from 'typeorm';
-import { CurrencyData, RequiredCurrencies, Translations } from './utils';
+import {
+    CbuFreshRates,
+    CbuScreenRate,
+    CurrencyData,
+    RequiredCurrencies,
+    Translations,
+} from './utils';
 
 dotenv.config();
 // const execPromise = promisify(exec);
@@ -356,28 +362,52 @@ export class TaskServiceService {
         if (this.cbuScreenshotRunning) return;
         this.cbuScreenshotRunning = true;
         try {
-            // bu yerda nasib bo'lsa markaziy bankning kursini yuboradigan qilamiz
+            // CBU ertangi kunga amal qiladigan kursni odatda tushdan keyin
+            // e'lon qiladi. Aniq vaqti tayin emas, shuning uchun kursning
+            // sanasi bugungidan keyingiga o'zgarguncha kutamiz.
+            const fresh = await this.waitForNextCbuRates();
 
-            // test channel
-            await this.CBU_screenshot(
-                this.test_channel_id,
-                '@our_testing_channel_spprt',
-                'kril',
-            );
+            if (!fresh) {
+                console.warn(
+                    '[CBU] Yangi kurs belgilangan muddat ichida chiqmadi — post qilinmadi.',
+                );
+                return;
+            }
 
-            // real channels
-            await this.CBU_screenshot(
-                this.dollrkurs_uzb_channel_id,
-                '@dollar_kurs_uzb',
-                'kril',
-            );
+            // Rasm bir marta yasaladi, uchala kanalga ham shu yuboriladi.
+            const screenshotPath = await this.renderCbuImage(fresh.rates);
 
-            // real channels
-            await this.CBU_screenshot(
-                this.dollrkurs_channel_id,
-                '@dollrkurs',
-                'uz',
-            );
+            try {
+                // test channel
+                await this.sendCbuImage(
+                    this.test_channel_id,
+                    '@our_testing_channel_spprt',
+                    'kril',
+                    screenshotPath,
+                    fresh,
+                );
+
+                // real channels
+                await this.sendCbuImage(
+                    this.dollrkurs_uzb_channel_id,
+                    '@dollar_kurs_uzb',
+                    'kril',
+                    screenshotPath,
+                    fresh,
+                );
+
+                await this.sendCbuImage(
+                    this.dollrkurs_channel_id,
+                    '@dollrkurs',
+                    'uz',
+                    screenshotPath,
+                    fresh,
+                );
+            } finally {
+                fs.promises.unlink(screenshotPath).catch(() => {});
+            }
+        } catch (err) {
+            console.error('[every_day_at_4pm_plus10] error:', err);
         } finally {
             this.cbuScreenshotRunning = false;
         }
@@ -405,7 +435,10 @@ export class TaskServiceService {
      */
     @Cron(CronExpression.EVERY_HOUR)
     async every_30_seconds() {
-        await this.send_pragnoz_call_auction(this.test_channel_id);
+        // O'CHIRILGAN: uzrvb.uz/GetCallAuctionInfo.php endpointi qotib qolgan
+        // (07.10.2025 sanasidagi ma'lumotni qaytaradi), shuning uchun bu post
+        // noto'g'ri prognoz tarqatardi. Manba tiklanguncha yopib turibmiz.
+        // await this.send_pragnoz_call_auction(this.test_channel_id);
         await this.every_minutes(
             this.test_channel_id,
             'kril',
@@ -431,234 +464,293 @@ export class TaskServiceService {
     //     );
     // }
 
-    async CBU_screenshot(
+    // ================= CBU RASMIY KURSI =================
+    //
+    // CBU kursni oldingi ish kuni tushdan keyin e'lon qiladi va u ertasi
+    // kundan amal qiladi (juma kuni e'lon qilingani dushanbaga tegishli —
+    // shanba/yakshanbaga alohida kurs belgilanmaydi).
+    //
+    // MUHIM: arxiv API kelajakdagi sana so'ralganda xato qaytarmaydi, oxirgi
+    // mavjud kursni beradi. Shuning uchun har doim `Date` maydonini tekshirib,
+    // u bugungidan keyingi sana ekaniga ishonch hosil qilamiz. Aks holda eski
+    // kursni yangi deb e'lon qilib qo'yish xavfi bor.
+
+    /** Yangi kursni kutish oralig'i va umumiy muddati */
+    private static readonly CBU_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 daqiqa
+    private static readonly CBU_POLL_TIMEOUT_MS = 5 * 60 * 60 * 1000; // 5 soat
+
+    /** 'YYYYMMDD' — Toshkent vaqti bo'yicha bugungi sana (solishtirish uchun) */
+    private tashkentDateKey(d: Date = new Date()): string {
+        // en-CA => 'YYYY-MM-DD'
+        return d
+            .toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' })
+            .replace(/-/g, '');
+    }
+
+    /** CBU ning 'DD.MM.YYYY' formatini 'YYYYMMDD' ga o'giradi */
+    private cbuDateKey(cbuDate: string): string | null {
+        const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec((cbuDate ?? '').trim());
+        return m ? `${m[3]}${m[2]}${m[1]}` : null;
+    }
+
+    private sleepMs(ms: number) {
+        return new Promise((r) => setTimeout(r, ms));
+    }
+
+    /**
+     * CBU yangi (bugungidan keyingi sanaga tegishli) kursni e'lon qilishini
+     * kutadi. Chiqsa — kurslarni qaytaradi, muddat tugasa — null.
+     */
+    private async waitForNextCbuRates(): Promise<CbuFreshRates | null> {
+        const todayKey = this.tashkentDateKey();
+        const deadline =
+            Date.now() + TaskServiceService.CBU_POLL_TIMEOUT_MS;
+
+        let logged = false;
+
+        while (Date.now() < deadline) {
+            try {
+                const all = await fetchCbuRates();
+                const usd = all.find((r) => r.Ccy === 'USD');
+                const dateKey = usd ? this.cbuDateKey(usd.Date) : null;
+
+                if (dateKey && dateKey > todayKey) {
+                    console.log(
+                        `[CBU] Yangi kurs chiqdi: ${usd.Date} (USD ${usd.Rate}, ${usd.Diff})`,
+                    );
+                    return {
+                        effectiveDate: usd.Date,
+                        rates: this.toCbuScreenRates(all),
+                    };
+                }
+
+                if (!logged) {
+                    console.log(
+                        `[CBU] Hali eski kurs turibdi (${usd?.Date ?? '?'}), kutilyapti...`,
+                    );
+                    logged = true;
+                }
+            } catch (err) {
+                console.warn(
+                    '[CBU] kursni tekshirishda xatolik:',
+                    err?.message ?? err,
+                );
+            }
+
+            await this.sleepMs(TaskServiceService.CBU_POLL_INTERVAL_MS);
+        }
+
+        return null;
+    }
+
+    /** CBU javobidan faqat USD/EUR/RUB ni shu tartibda ajratib oladi */
+    private toCbuScreenRates(all: CbuRate[]): CbuScreenRate[] {
+        const toNum = (v: string) => Number(String(v ?? '').replace(',', '.'));
+
+        return ['USD', 'EUR', 'RUB']
+            .map((ccy) => all.find((r) => r.Ccy === ccy))
+            .filter((r): r is CbuRate => !!r)
+            .map((r) => {
+                const diff = toNum(r.Diff);
+                return {
+                    currency: r.Ccy,
+                    rate: toNum(r.Rate),
+                    change: Math.abs(Number.isFinite(diff) ? diff : 0),
+                    direction:
+                        diff > 0 ? 'up' : diff < 0 ? 'down' : ('same' as const),
+                };
+            }) as CbuScreenRate[];
+    }
+
+    /** Kurslardan rasm yasab, fayl yo'lini qaytaradi */
+    private async renderCbuImage(rates: CbuScreenRate[]): Promise<string> {
+        const imagesDir = path.resolve(process.cwd(), 'images');
+        await fs.promises.mkdir(imagesDir, { recursive: true });
+
+        const screenshotPath = path.join(
+            imagesDir,
+            `cbu-${Date.now()}.png`,
+        ) as `${string}.png`;
+
+        const flags: Record<string, string> = {
+            USD: 'https://flagcdn.com/w80/us.png',
+            EUR: 'https://flagcdn.com/w80/eu.png',
+            RUB: 'https://flagcdn.com/w80/ru.png',
+        };
+
+        const rowsHTML = rates
+            .map((r) => {
+                const arrow =
+                    r.direction === 'up' ? '▲' : r.direction === 'down' ? '▼' : '=';
+                const sign =
+                    r.direction === 'up' ? '+' : r.direction === 'down' ? '-' : '';
+                const color =
+                    r.direction === 'up'
+                        ? '#16a34a'
+                        : r.direction === 'down'
+                        ? '#dc2626'
+                        : '#64748b';
+                return `
+                <div class="row">
+                    <img class="flag" src="${
+                        flags[r.currency] ?? ''
+                    }" alt="${r.currency}" />
+                    <div class="info">
+                        <span class="currency">${r.currency}</span>
+                        <span class="rate">${r.rate.toFixed(2)}</span>
+                    </div>
+                    <div class="change" style="color: ${color}">
+                        <span>${sign}${r.change.toFixed(2)}</span>
+                        <span class="arrow">${arrow}</span>
+                    </div>
+                </div>`;
+            })
+            .join('');
+
+        const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8" />
+            <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: #ffffff;
+                    padding: 20px;
+                    width: 520px;
+                }
+                .row {
+                    display: flex;
+                    align-items: center;
+                    padding: 18px 16px;
+                    border-bottom: 1px dashed #d1d5db;
+                }
+                .row:last-child {
+                    border-bottom: none;
+                }
+                .flag {
+                    width: 44px;
+                    height: 44px;
+                    border-radius: 50%;
+                    object-fit: cover;
+                    margin-right: 16px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+                }
+                .info {
+                    flex: 1;
+                    display: flex;
+                    align-items: baseline;
+                    gap: 8px;
+                }
+                .currency {
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #111827;
+                }
+                .rate {
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: #111827;
+                }
+                .change {
+                    font-size: 17px;
+                    font-weight: 700;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    min-width: 100px;
+                    justify-content: flex-end;
+                }
+                .arrow {
+                    font-size: 14px;
+                }
+            </style>
+        </head>
+        <body>
+            ${rowsHTML}
+        </body>
+        </html>`;
+
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        });
+
+        try {
+            const renderPage = await browser.newPage();
+            await renderPage.setViewport({
+                width: 520,
+                height: 600,
+                deviceScaleFactor: 3,
+            });
+            await renderPage.setContent(html, { waitUntil: 'networkidle0' });
+
+            // Faqat body ni screenshot olamiz (ortiqcha bo'sh joy bo'lmasin)
+            const body = await renderPage.$('body');
+            await body!.screenshot({ path: screenshotPath, type: 'png' });
+        } finally {
+            await browser.close();
+        }
+
+        return screenshotPath;
+    }
+
+    /** Tayyor rasmni caption bilan bitta kanalga yuboradi */
+    private async sendCbuImage(
         chat_id: number,
         username: string,
         language: 'uz' | 'kril',
+        screenshotPath: string,
+        fresh: CbuFreshRates,
     ) {
         try {
-            const browser = await puppeteer.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            const emoji: Record<string, string> = {
+                USD: '$',
+                EUR: '€',
+                RUB: '₽',
+            };
+
+            const lines = fresh.rates.map((r) => {
+                const arrow =
+                    r.direction === 'up'
+                        ? '📈'
+                        : r.direction === 'down'
+                        ? '📉'
+                        : '➖';
+                const sign =
+                    r.direction === 'up'
+                        ? '+'
+                        : r.direction === 'down'
+                        ? '-'
+                        : '';
+                const flag = emoji[r.currency] ?? '💱';
+                return `${flag} <b>${r.currency}</b> = ${r.rate.toFixed(
+                    2,
+                )} (${sign}${r.change.toFixed(2)})  ${arrow}`;
             });
 
-            const screenshotPath = path.resolve(
-                process.cwd(),
-                'images',
-                `cbu-${Date.now()}.png`,
-            ) as `${string}.png`;
+            const usd = fresh.rates.find((r) => r.currency === 'USD');
+            const usd_direction =
+                usd?.direction === 'up'
+                    ? Translations[language].up
+                    : usd?.direction === 'down'
+                    ? Translations[language].down
+                    : Translations[language].same;
 
-            try {
-                const page = await browser.newPage();
-                await page.setViewport({
-                    width: 414,
-                    height: 896,
-                    deviceScaleFactor: 3,
-                });
-                await page.goto('https://cbu.uz/uz/', {
-                    waitUntil: 'networkidle2',
-                    timeout: 30000,
-                });
+            const caption =
+                `<b>🏛 ${Translations[language].screen_title} ${usd_direction}</b>\n` +
+                `<i>${fresh.effectiveDate} ${Translations[language].effective_from}</i>\n\n` +
+                lines.join('\n') +
+                `\n\n${username}`;
 
-                await page.waitForSelector(
-                    '.exchange__item[data-currency="USD"]',
-                    {
-                        timeout: 10000,
-                    },
-                );
-
-                // 1) Ma'lumotlarni scrape qilish
-                const rates = await page.$$eval('.exchange__item', (items) => {
-                    const keep = ['USD', 'EUR', 'RUB'];
-                    return items
-                        .filter((item) =>
-                            keep.includes(
-                                item.getAttribute('data-currency') ?? '',
-                            ),
-                        )
-                        .map((item) => {
-                            const currency =
-                                item.getAttribute('data-currency') ?? '';
-                            const valueText =
-                                item.querySelector('.exchange__item_value')
-                                    ?.textContent ?? '';
-                            const shiftText =
-                                item.querySelector('.exchange__item_shift')
-                                    ?.textContent ?? '';
-                            const isGreen = item
-                                .querySelector('.exchange__item_shift')
-                                ?.classList.contains('color_green');
-                            const afterEq = valueText.split('=')[1] ?? '';
-                            const rate =
-                                parseFloat(afterEq.replace(/[^0-9.]/g, '')) ||
-                                0;
-                            const change =
-                                parseFloat(
-                                    shiftText.replace(/[^0-9.-]/g, ''),
-                                ) || 0;
-                            return {
-                                currency,
-                                rate,
-                                change: Math.abs(change),
-                                direction: (isGreen ? 'up' : 'down') as
-                                    | 'up'
-                                    | 'down',
-                            };
-                        });
-                });
-
-                // 2) O'zimiz chiroyli HTML yasab, shuni screenshot olamiz
-                const flags: Record<string, string> = {
-                    USD: 'https://flagcdn.com/w80/us.png',
-                    EUR: 'https://flagcdn.com/w80/eu.png',
-                    RUB: 'https://flagcdn.com/w80/ru.png',
-                };
-
-                const rowsHTML = rates
-                    .map((r) => {
-                        const arrow = r.direction === 'up' ? '▲' : '▼';
-                        const sign = r.direction === 'up' ? '+' : '-';
-                        const color =
-                            r.direction === 'up' ? '#16a34a' : '#dc2626';
-                        return `
-                        <div class="row">
-                            <img class="flag" src="${
-                                flags[r.currency] ?? ''
-                            }" alt="${r.currency}" />
-                            <div class="info">
-                                <span class="currency">${r.currency}</span>
-                                <span class="rate">${r.rate.toFixed(2)}</span>
-                            </div>
-                            <div class="change" style="color: ${color}">
-                                <span>${sign}${r.change.toFixed(2)}</span>
-                                <span class="arrow">${arrow}</span>
-                            </div>
-                        </div>`;
-                    })
-                    .join('');
-
-                const html = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="utf-8" />
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body {
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                            background: #ffffff;
-                            padding: 20px;
-                            width: 520px;
-                        }
-                        .row {
-                            display: flex;
-                            align-items: center;
-                            padding: 18px 16px;
-                            border-bottom: 1px dashed #d1d5db;
-                        }
-                        .row:last-child {
-                            border-bottom: none;
-                        }
-                        .flag {
-                            width: 44px;
-                            height: 44px;
-                            border-radius: 50%;
-                            object-fit: cover;
-                            margin-right: 16px;
-                            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-                        }
-                        .info {
-                            flex: 1;
-                            display: flex;
-                            align-items: baseline;
-                            gap: 8px;
-                        }
-                        .currency {
-                            font-size: 20px;
-                            font-weight: 700;
-                            color: #111827;
-                        }
-                        .rate {
-                            font-size: 20px;
-                            font-weight: 600;
-                            color: #111827;
-                        }
-                        .change {
-                            font-size: 17px;
-                            font-weight: 700;
-                            display: flex;
-                            align-items: center;
-                            gap: 6px;
-                            min-width: 100px;
-                            justify-content: flex-end;
-                        }
-                        .arrow {
-                            font-size: 14px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${rowsHTML}
-                </body>
-                </html>`;
-
-                // Yangi sahifa ochib, HTML ni render qilamiz
-                const renderPage = await browser.newPage();
-                await renderPage.setViewport({
-                    width: 520,
-                    height: 600,
-                    deviceScaleFactor: 3,
-                });
-                await renderPage.setContent(html, {
-                    waitUntil: 'networkidle0',
-                });
-
-                // Faqat body ni screenshot olamiz (ortiqcha bo'sh joy bo'lmasin)
-                const body = await renderPage.$('body');
-                await body!.screenshot({
-                    path: screenshotPath,
-                    type: 'png',
-                });
-
-                await renderPage.close();
-
-                // 3) Caption tayyorlash
-                const emoji: Record<string, string> = {
-                    USD: '$',
-                    EUR: '€',
-                    RUB: '₽',
-                };
-
-                const lines = rates.map((r) => {
-                    const arrow = r.direction === 'up' ? '📈' : '📉';
-                    const sign = r.direction === 'up' ? '+' : '-';
-                    const flag = emoji[r.currency] ?? '💱';
-                    return `${flag} <b>${r.currency}</b> = ${r.rate.toFixed(
-                        2,
-                    )} (${sign}${r.change})  ${arrow}`;
-                });
-
-                const usd_direction =
-                    rates[0]?.direction === 'up'
-                        ? Translations[language].up
-                        : Translations[language].down;
-
-                const caption =
-                    `<b>🏛 ${Translations[language].screen_title} ${usd_direction}</b>\n\n` +
-                    lines.join('\n') +
-                    `\n\n${username}`;
-
-                await this.bot.telegram.sendPhoto(
-                    chat_id,
-                    { source: fs.createReadStream(screenshotPath) },
-                    { caption, parse_mode: 'HTML' },
-                );
-            } finally {
-                await browser.close();
-                fs.promises.unlink(screenshotPath).catch(() => {});
-            }
+            await this.bot.telegram.sendPhoto(
+                chat_id,
+                { source: fs.createReadStream(screenshotPath) },
+                { caption, parse_mode: 'HTML' },
+            );
         } catch (err) {
-            console.error('[CBU_screenshot] error:', err);
+            console.error(`[sendCbuImage] ${chat_id} ga yuborilmadi:`, err);
         }
     }
     /**

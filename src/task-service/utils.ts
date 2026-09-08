@@ -62,6 +62,22 @@ export interface RequiredCurrencies {
     CNY: CbuRate;
 }
 
+/** CBU rasmiy kursi rasmi uchun bitta valyuta qatori */
+export interface CbuScreenRate {
+    currency: string;
+    rate: number;
+    /** o'zgarish, doim musbat — ishora `direction` da */
+    change: number;
+    direction: 'up' | 'down' | 'same';
+}
+
+/** CBU dan olingan YANGI (kelgusi sanaga amal qiladigan) kurslar */
+export interface CbuFreshRates {
+    /** CBU bergan sana, 'DD.MM.YYYY' — shu kundan amal qiladi */
+    effectiveDate: string;
+    rates: CbuScreenRate[];
+}
+
 export const Translations = {
     uz: {
         caption_kurs: 'holatiga banklarda AQSh dollari kursi',
@@ -72,6 +88,8 @@ export const Translations = {
         screen_title: 'Dollarning rasmiy kursi',
         up: "ko'tarildi",
         down: 'tushdi',
+        same: "o'zgarmadi",
+        effective_from: 'dan amal qiladi',
     },
     kril: {
         caption_kurs: 'ҳолатига банкларда АҚШ доллари курси',
@@ -82,5 +100,7 @@ export const Translations = {
         screen_title: 'Долларнинг расмий курси',
         up: 'кўтарилди',
         down: 'тушди',
+        same: 'ўзгармади',
+        effective_from: 'дан амал қилади',
     },
 };
