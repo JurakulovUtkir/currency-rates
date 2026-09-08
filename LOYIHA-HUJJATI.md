@@ -1,6 +1,6 @@
 # Valyuta Kurslari — Loyiha hujjati
 
-> Holat: 2026-09-08 · Branch: `main` · Oxirgi commit: `d69714e`
+> Holat: 2026-09-08 · Branch: `main` · Oxirgi commit: `596d33c`
 
 ---
 
@@ -100,8 +100,8 @@ Barchasi `Asia/Tashkent`. Kanal ID'lari `task-service.service.ts:65-67` da hardc
 | **08:00** | har kuni | `every_day_at_8am` | Matn: bozor + rasmiy kurslar | kril → `dollar_kurs_uzb`, latin → `dollrkurs`, latin → test |
 | **09:20** | Du–Ju | `every_day_at_9am_plus20` | Rasm (barcha banklar) + Best-5 rasm, caption "9:00" | `dollar_kurs_uzb` (dark), `dollrkurs` (light) |
 | **14:10** | Du–Ju | `every_day_at_14_10` | Rasm (barcha banklar), caption "14:00", Best-5 YO'Q | `dollar_kurs_uzb` (dark), `dollrkurs` (light) |
-| **16:10** | Du–Ju | `every_day_at_4pm_plus10` | CBU screenshot (puppeteer + custom HTML) | test, `dollar_kurs_uzb`, `dollrkurs` |
-| **har soatda** | har kuni | `every_30_seconds` ⚠️ | Prognoz + rasm + 2 ta matn (4 ta post!) | **faqat test kanal** |
+| **16:10** | Du–Ju | `every_day_at_4pm_plus10` | CBU rasmiy kursi — **yangi kurs chiqishini kutadi** (7-bo'lim) | test, `dollar_kurs_uzb`, `dollrkurs` |
+| **har soatda** | har kuni | `every_30_seconds` ⚠️ | Rasm + 2 ta matn (3 ta post) | **faqat test kanal** |
 
 **Kanallar:**
 - `test_channel_id = -1001311323927` → `@our_testing_channel_spprt`
@@ -112,6 +112,9 @@ Barchasi `Asia/Tashkent`. Kanal ID'lari `task-service.service.ts:65-67` da hardc
 > **DB'ni yangilab turadigan yagona doimiy cron**. 08:00 dagi matnli post
 > `loading_banks()` ni chaqirmaydi — u DB'dan o'qiydi, ya'ni soatlik cron
 > o'chsa, 08:00 posti eski ma'lumot bilan ketadi.
+>
+> Shu cronda ilgari `send_pragnoz_call_auction()` ham bor edi — manba o'lik
+> bo'lgani uchun o'chirildi (12-bo'lim, J bandi).
 
 ---
 
@@ -152,6 +155,73 @@ Barchasi `Asia/Tashkent`. Kanal ID'lari `task-service.service.ts:65-67` da hardc
 **Boshqa manbalar:**
 - `prognoz.ts` → `uzrvb.uz/GetCallAuctionInfo.php` (ertangi kurs prognozi)
 - `pragnoz.ts` → puppeteer, `uzrvb.uz/oz/` (hozirda cron'dan chaqirilmaydi)
+
+---
+
+## 6a. CBU rasmiy kursi — e'lon qilish qoidalari
+
+> Bu qism 2026-09-07 da prodda xato ma'lumot chiqargan, keyin tuzatilgan.
+> Kurs bilan ishlashdan oldin o'qing.
+
+**Asosiy qoida: CBU kursni oldingi ish kuni tushdan keyin e'lon qiladi, u
+ertasi kundan amal qiladi.**
+
+Arxiv API'dan olingan dalillar:
+
+| So'ralgan sana | Qaytgan `Date` | USD | Diff |
+|---|---|---|---|
+| 03.09 (Pay) | 03.09.2026 | 11813.09 | −7.39 |
+| 04.09 (Ju) | 04.09.2026 | 11795.00 | −18.09 |
+| **05.09 (Sha)** | **04.09.2026** | 11795.00 | −18.09 |
+| **06.09 (Yak)** | **04.09.2026** | 11795.00 | −18.09 |
+| 07.09 (Du) | 07.09.2026 | 11785.30 | −9.70 |
+| 08.09 (Se) | 08.09.2026 | 11789.33 | +4.03 |
+
+Xulosalar:
+
+1. **Dam olish kunlariga alohida kurs belgilanmaydi** — juma kursi
+   shanba/yakshanbaga ham amal qiladi. Ya'ni **juma kuni e'lon qilinadigan
+   kurs dushanbaniki**.
+2. Bannerdagi "08.09.2026 **dan**" — "shu sanadan amal qiladi" degani.
+3. ⚠️ **Kelajakdagi sana so'ralganda API xato bermaydi — oxirgi mavjud kursni
+   qaytaradi.** Shuning uchun `Date` maydonini tekshirish **majburiy**.
+
+### Endpointlar
+
+```
+GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/                     # joriy
+GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/all/<YYYY-MM-DD>/
+GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD/<YYYY-MM-DD>/
+```
+
+### 16:10 croni qanday ishlaydi
+
+```
+16:10 → waitForNextCbuRates()
+          API dagi Date bugungidan katta bo'lguncha
+          har 5 daqiqada tekshiradi (5 soatgacha)
+        ├─ chiqdi  → renderCbuImage() → 3 kanalga sendCbuImage()
+        └─ chiqmadi → HECH NARSA post qilinmaydi
+```
+
+Caption'da kurs qaysi sanadan amal qilishi ko'rsatiladi:
+
+```
+🏛 Dollarning rasmiy kursi ko'tarildi
+09.09.2026 dan amal qiladi
+
+$ USD = 11789.33 (+4.03)  📈
+```
+
+Yo'nalish (`tushdi`/`ko'tarildi`) `Diff` ning ishorasidan olinadi.
+
+> ❌ **`cbu.uz` bosh sahifasidagi widget'ni scrape qilmang.** U ayni damda
+> amal qilayotgan kursni ko'rsatadi. 2026-09-07 da 16:10 da CBU hali
+> 08.09 kursini chiqarmagan edi, widget 07.09 kursini (−9.70) ko'rsatdi va
+> bot "kurs tushdi" deb post qildi — holbuki o'sha kuni kechqurun e'lon
+> qilingan 08.09 kursi **+4.03 ga ko'tarilgan** edi.
+
+> ⚠️ Kutish davomida `pm2 restart` qilinsa, o'sha kunlik post yo'qoladi.
 
 ---
 
@@ -276,6 +346,19 @@ qarang.
 
 ## 12. Aniqlangan muammolar (muhimlik bo'yicha)
 
+### ✅ Tuzatilgan (`596d33c`, 2026-09-08 da deploy qilingan)
+
+| | Nima edi | Nima qilindi |
+|---|---|---|
+| CBU eski kursi | 16:10 da widget scrape qilinardi, CBU kechiksa eski kurs post bo'lardi | JSON API + `Date` tekshiruvi + yangi kurs chiqguncha kutish |
+| Sana ko'rinmasdi | Caption'da kurs qaysi kundan amalda ekani yo'q edi | `09.09.2026 dan amal qiladi` qo'shildi |
+| Mo'rt yo'nalish | `tushdi`/`ko'tarildi` CSS klassidan (`color_green`) olinardi | `Diff` ishorasidan olinadi, `o'zgarmadi` holati qo'shildi |
+| 3× puppeteer | Har kanal uchun alohida brauzer ochilardi | Rasm bir marta yasaladi |
+| O'lik prognoz | `uzrvb.uz` 07.10.2025 dagi ma'lumotni tarqatardi | Post o'chirildi (J bandi) |
+
+### Ochiq muammolar
+
+
 ### 🔴 A. Eski (stale) kurslar hech qachon o'chirilmaydi
 `loading_*` metodlari faqat UPDATE/INSERT qiladi. Agar:
 - scraper xato bersa (`Promise.allSettled` — jim yutiladi), yoki
@@ -327,8 +410,8 @@ tarzda keladi. Ya'ni bu xatar hozir ham ochiq.
 qilish (bir vaqtning o'zida serverdagi `puppeteer ^24.24.1` bump'ini ham
 repoga kiritib, drift'ni yopish mumkin).
 
-### 🟠 E. Har soatlik cron test kanalga 4 ta post tashlaydi
-`every_30_seconds()` (aslida `EVERY_HOUR`) → prognoz + rasm + 2 ta matn.
+### 🟠 E. Har soatlik cron test kanalga 3 ta post tashlaydi
+`every_30_seconds()` (aslida `EVERY_HOUR`) → rasm + 2 ta matn.
 Ayni paytda bu **DB'ni yangilaydigan yagona muntazam cron**, shuning uchun
 uni shunchaki o'chirib bo'lmaydi — avval alohida "faqat yangilash" croni
 kerak.
@@ -351,7 +434,16 @@ tugmasi), dublikat qator paydo bo'lishi mumkin.
 Har bir kanal uchun alohida `every_minutes()` chaqiriladi, har biri o'z
 scraping'ini qiladi — ~19 ta sayt 2 marta so'raladi.
 
-### ⚪ J. Tozalash kerak bo'lgan narsalar
+### 🟡 J. `uzrvb.uz` prognoz endpointi o'lik
+`https://uzrvb.uz/GetCallAuctionInfo.php` `07.10.2025` sanasidagi ma'lumotni
+qaytarib qotib qolgan (`price: "12 040,00"`, bugungi kurs ~11789). Kod
+`data.day` ni hech qachon tekshirmasdi.
+
+Hozircha `every_30_seconds()` dan post o'chirilgan (`send_pragnoz_call_auction`
+metodi kodda qoldi). Manba tiklansa yoki boshqa manba topilsa qayta yoqiladi —
+lekin **`data.day` bugungi/ertangi sana ekani tekshirilgandan keyin**.
+
+### ⚪ K. Tozalash kerak bo'lgan narsalar
 - `auth/`, `users/` (controller/service), `questions/`, `subjects/`,
   `question-types/`, `file-system/`, `channels/` — o'lik modullar
 - `image-generator.ts`, `enhanced_image_generator.ts` — ishlatilmaydi
@@ -378,7 +470,9 @@ docker compose logs -f rates
 ```
 
 Muhim fayllar:
+- Claude Code uchun qisqa yo'riqnoma: `CLAUDE.md`
 - Cron va biznes-logika: `src/task-service/task-service.service.ts`
+- CBU kutuvchisi: `waitForNextCbuRates()` / `renderCbuImage()` / `sendCbuImage()`
 - Kanal ID'lari: `src/task-service/task-service.service.ts:65-67`
 - Matn tarjimalari: `src/task-service/utils.ts:65`
 - Bank ro'yxati: `src/rates/utils/enums.ts`
