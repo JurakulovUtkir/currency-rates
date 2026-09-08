@@ -2058,8 +2058,13 @@ $ 1 AQSh dollari
                 // saqlanardi — ya'ni rasmda "Asakabank eng arzon" bo'lib
                 // ko'rinardi, aslida u yerda umuman kurs yo'q edi.
                 // Endi CBU ga qaytish yo'q: kurs yo'q bo'lsa qator o'chiriladi.
-                const buyNum = rate?.buy ?? null;
-                const sellNum = rate?.sell ?? null;
+                // Javobda bu valyuta umuman yo'q bo'lsa — bu "bank kurs
+                // e'lon qilmadi" degani emas, balki so'rov nosoz kelgan
+                // bo'lishi mumkin. Bunday holda hech narsaga tegmaymiz.
+                if (!rate) return;
+
+                const buyNum = rate.buy ?? null;
+                const sellNum = rate.sell ?? null;
 
                 if (buyNum == null && sellNum == null) {
                     const removed = await this.ratesRepository.delete({
@@ -2208,12 +2213,28 @@ $ 1 AQSh dollari
                 rate: (typeof normalized)[number] | undefined,
                 currency: string,
             ) => {
+                // Markaziy bank kursiga (rate.cbu) qaytish yo'q — u rasmda
+                // bankning o'z kursi bo'lib ko'rinardi.
+                // Javobda bu valyuta umuman yo'q bo'lsa — bu "bank kurs
+                // e'lon qilmadi" degani emas, balki so'rov nosoz kelgan
+                // bo'lishi mumkin. Bunday holda hech narsaga tegmaymiz.
                 if (!rate) return;
 
-                // Prefer bank's buy/sell; fall back to CBU when missing
-                const buyNum = rate.buy ?? rate.cbu;
-                const sellNum = rate.sell ?? rate.cbu;
-                if (buyNum == null && sellNum == null) return;
+                const buyNum = rate.buy ?? null;
+                const sellNum = rate.sell ?? null;
+
+                if (buyNum == null && sellNum == null) {
+                    const removed = await this.ratesRepository.delete({
+                        currency,
+                        bank: Bank.HAYOTBANK,
+                    });
+                    if (removed.affected) {
+                        console.warn(
+                            `[HAYOTBANK] ${currency} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                        );
+                    }
+                    return;
+                }
 
                 const data = {
                     currency,
@@ -2268,12 +2289,28 @@ $ 1 AQSh dollari
                 rate: (typeof normalized)[number] | undefined,
                 currency: string,
             ) => {
+                // Markaziy bank kursiga (rate.cbu) qaytish yo'q — u rasmda
+                // bankning o'z kursi bo'lib ko'rinardi.
+                // Javobda bu valyuta umuman yo'q bo'lsa — bu "bank kurs
+                // e'lon qilmadi" degani emas, balki so'rov nosoz kelgan
+                // bo'lishi mumkin. Bunday holda hech narsaga tegmaymiz.
                 if (!rate) return;
 
-                // Prefer bank buy/sell; fall back to CBU when missing
-                const buyNum = rate.buy ?? rate.cbu;
-                const sellNum = rate.sell ?? rate.cbu;
-                if (buyNum == null && sellNum == null) return;
+                const buyNum = rate.buy ?? null;
+                const sellNum = rate.sell ?? null;
+
+                if (buyNum == null && sellNum == null) {
+                    const removed = await this.ratesRepository.delete({
+                        currency,
+                        bank: Bank.HAMKORBANK,
+                    });
+                    if (removed.affected) {
+                        console.warn(
+                            `[HAMKORBANK] ${currency} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                        );
+                    }
+                    return;
+                }
 
                 const data = {
                     currency,
@@ -2481,9 +2518,24 @@ $ 1 AQSh dollari
         ) => {
             if (!rec) return;
 
-            const buyNum = rec.buy ?? rec.cb;
-            const sellNum = rec.sell ?? rec.cb;
-            if (buyNum == null && sellNum == null) return;
+            // Bank kursini e'lon qilmasa markaziy bank kursiga (rec.cb)
+            // qaytish mumkin emas — u rasmda bankning o'z kursi bo'lib
+            // ko'rinadi va odamni bankka bekorga yuboradi.
+            const buyNum = rec.buy ?? null;
+            const sellNum = rec.sell ?? null;
+
+            if (buyNum == null && sellNum == null) {
+                const removed = await this.ratesRepository.delete({
+                    currency: code,
+                    bank: Bank.IPAKYULIBANK,
+                });
+                if (removed.affected) {
+                    console.warn(
+                        `[IPAKYULI] ${code} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                    );
+                }
+                return;
+            }
 
             const data = {
                 currency: code,
@@ -2592,10 +2644,23 @@ $ 1 AQSh dollari
                 const code = map[k.toLowerCase()];
                 if (!code || !rec) continue;
 
-                // prefer explicit buy/sell; fallback to CB if one side missing
-                const buyNum = rec.buy ?? rec.cb ?? null;
-                const sellNum = rec.sell ?? rec.cb ?? null;
-                if (buyNum == null && sellNum == null) continue;
+                // Markaziy bank kursiga (rec.cb) qaytish yo'q — u rasmda
+                // SQB ning o'z kursi bo'lib ko'rinardi.
+                const buyNum = rec.buy ?? null;
+                const sellNum = rec.sell ?? null;
+
+                if (buyNum == null && sellNum == null) {
+                    const removed = await this.ratesRepository.delete({
+                        currency: code,
+                        bank: Bank.SQB,
+                    });
+                    if (removed.affected) {
+                        console.warn(
+                            `[SQB] ${code} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                        );
+                    }
+                    continue;
+                }
 
                 const row = {
                     currency: code,
