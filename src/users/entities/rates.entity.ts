@@ -3,10 +3,15 @@ import {
     CreateDateColumn,
     Entity,
     PrimaryGeneratedColumn,
+    Unique,
     UpdateDateColumn,
 } from 'typeorm';
 
 @Entity({ name: 'rates' })
+// Bitta bank + valyuta uchun bitta qator. Upsert qo'lda (findOneBy + save)
+// qilinadi, shuning uchun parallel yozuvda dublikat paydo bo'lish xavfi bor —
+// buni baza darajasida to'sib qo'yamiz.
+@Unique('uq_rates_bank_currency', ['bank', 'currency'])
 export class Rate {
     @PrimaryGeneratedColumn('uuid')
     id!: string;

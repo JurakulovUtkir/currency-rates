@@ -360,7 +360,7 @@ export class AdminMenuScene {
                         chatId,
                         messageId,
                         undefined,
-                        `${frames[i++ % frames.length]} ${prefix}`,
+                        `${this.frames[i++ % this.frames.length]} ${prefix}`,
                     );
                     // sendChatAction at most every ~4s to keep indicator alive
                     if (actionTick++ % 3 === 0) {

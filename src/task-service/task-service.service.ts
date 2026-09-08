@@ -257,15 +257,18 @@ export class TaskServiceService {
                 );
             }
 
-            // best-effort cleanup
-            fs.promises
-                .unlink(filePath)
-                .catch((e) =>
-                    console.warn(
-                        '[every_minutes] Could not delete image:',
-                        e?.message ?? e,
-                    ),
-                );
+            // best-effort cleanup — best5 rasmi ham o'chiriladi, aks holda
+            // `images/` papkasi asta-sekin to'lib boradi.
+            for (const p of [filePath, best5.filePath]) {
+                fs.promises
+                    .unlink(p)
+                    .catch((e) =>
+                        console.warn(
+                            '[every_minutes] Could not delete image:',
+                            e?.message ?? e,
+                        ),
+                    );
+            }
         } catch (err) {
             console.error('every_minutes cron error:', err);
         }
