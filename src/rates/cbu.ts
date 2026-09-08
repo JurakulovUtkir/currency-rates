@@ -20,6 +20,18 @@ export type FetchCbuRatesOpts = {
     sessionId?: string;
     /** Optional AbortSignal for timeouts/cancellation */
     signal?: AbortSignal;
+    /**
+     * 'YYYY-MM-DD' — o'sha kunga amal qiladigan kursni so'raydi.
+     *
+     * MUHIM: sanasiz endpoint (`/json/`) DOIM bugun amal qilayotgan kursni
+     * qaytaradi va faqat yarim tunda o'zgaradi. CBU tushdan keyin e'lon
+     * qiladigan "ertangi" kurs faqat SANALI endpointda ko'rinadi.
+     *
+     * Sana kelajakda bo'lsa yoki dam olish kuni bo'lsa, API xato bermaydi —
+     * o'sha kunga amal qiladigan (ya'ni oxirgi mavjud) kursni qaytaradi.
+     * Shuning uchun javobdagi `Date` maydonini tekshirish shart.
+     */
+    date?: string;
 };
 
 /**
@@ -29,7 +41,7 @@ export type FetchCbuRatesOpts = {
 export async function fetchCbuRates(
     opts: FetchCbuRatesOpts = {},
 ): Promise<CbuRate[]> {
-    const { sessionId, signal } = opts;
+    const { sessionId, signal, date } = opts;
 
     const headers = new Headers();
     const phpsessid = sessionId ?? process.env.CBU_PHPSESSID;
@@ -37,7 +49,8 @@ export async function fetchCbuRates(
         headers.set('Cookie', `PHPSESSID=${phpsessid}`);
     }
 
-    const url = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/';
+    const base = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json';
+    const url = date ? `${base}/all/${date}/` : `${base}/`;
 
     try {
         const resp = await fetch(url, {

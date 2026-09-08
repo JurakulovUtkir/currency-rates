@@ -186,20 +186,32 @@ Xulosalar:
 3. ⚠️ **Kelajakdagi sana so'ralganda API xato bermaydi — oxirgi mavjud kursni
    qaytaradi.** Shuning uchun `Date` maydonini tekshirish **majburiy**.
 
-### Endpointlar
+### Endpointlar — farqi hal qiluvchi
 
-```
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/                     # joriy
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/all/<YYYY-MM-DD>/
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD/<YYYY-MM-DD>/
-```
+| Endpoint | Nima qaytaradi |
+|---|---|
+| `json/` | **BUGUN amal qilayotgan** kurs. Faqat yarim tunda o'zgaradi. Ertangi kursni hech qachon ko'rsatmaydi. |
+| `json/all/<YYYY-MM-DD>/` | O'sha kunga amal qiladigan kurs. **Yangi e'lon faqat shu yerda ko'rinadi.** |
+| `json/USD/<YYYY-MM-DD>/` | Bitta valyuta uchun |
+
+2026-09-08 da tekshirilgan: soat 18:05 da sayt banneri `09.09.2026` ni
+(11813.21, +23.88) ko'rsatib turgan bir paytda `json/` hamon `08.09.2026`
+qaytarardi, `json/all/2026-09-09/` esa yangi kursni bergan.
+
+⚠️ Sanali endpoint ham kelajak sana yoki dam olish kuni so'ralganda xato
+qaytarmaydi — oxirgi mavjud kursni beradi. `Date` ni tekshirish shart.
+
+Juma kuni e'lon qilinadigan kurs dushanbaniki. Shanbani so'rasak API jumaning
+kursini qaytaradi ("yangi emas"), shuning uchun kod keyingi **4 kunni**
+ketma-ket sinab ko'radi — bayramlar ham shu tarzda o'tib ketiladi.
 
 ### 16:10 croni qanday ishlaydi
 
 ```
 16:10 → waitForNextCbuRates()
-          API dagi Date bugungidan katta bo'lguncha
-          har 5 daqiqada tekshiradi (5 soatgacha)
+          findNextPublishedCbuRates(): ertaga..+4 kun sanali endpointdan
+          so'rab, Date bugungidan katta bo'lganini qidiradi
+          topilmasa har 5 daqiqada qayta urinadi (5 soatgacha)
         ├─ chiqdi  → renderCbuImage() → 3 kanalga sendCbuImage()
         └─ chiqmadi → HECH NARSA post qilinmaydi
 ```

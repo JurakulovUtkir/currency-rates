@@ -81,14 +81,28 @@ diqqat talab qiladi.
 amal qiladi.** Juma kuni e'lon qilinadigan kurs — dushanbaniki;
 shanba/yakshanbaga alohida kurs belgilanmaydi.
 
-**Arxiv API kelajakdagi sana so'ralganda xato qaytarmaydi — oxirgi mavjud
-kursni beradi.** Shuning uchun `Date` maydonini har doim tekshirish shart:
+**Ikkita endpoint bor va farqi hal qiluvchi:**
 
 ```
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/          → joriy kurs
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/all/<YYYY-MM-DD>/
-GET https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD/<YYYY-MM-DD>/
+GET .../arkhiv-kursov-valyut/json/                  → BUGUN amal qilayotgan kurs.
+                                                      Faqat yarim tunda o'zgaradi.
+                                                      Ertangi kursni HECH QACHON ko'rsatmaydi.
+GET .../arkhiv-kursov-valyut/json/all/<YYYY-MM-DD>/ → o'sha kunga amal qiladigan kurs.
+                                                      Yangi e'lon faqat SHU YERDA ko'rinadi.
+GET .../arkhiv-kursov-valyut/json/USD/<YYYY-MM-DD>/ → bitta valyuta uchun
 ```
+
+Sanasiz endpointdan "ertangi kurs chiqdimi?" deb kutish — abadiy kutish
+degani. Bir marta shu xatoga yo'l qo'yilgan.
+
+**Sanali endpoint ham kelajak sana yoki dam olish kuni so'ralganda xato
+qaytarmaydi — o'sha kunga amal qiladigan (oxirgi mavjud) kursni beradi.**
+Shuning uchun javobdagi `Date` maydonini tekshirish shart.
+
+Juma kuni e'lon qilinadigan kurs **dushanbaniki**. Shanbani so'rasangiz API
+jumaning kursini qaytaradi, ya'ni "yangi emas" — shuning uchun
+`findNextPublishedCbuRates()` keyingi 4 kunni ketma-ket sinab ko'radi.
+Bayram kunlari ham shu tarzda o'tib ketiladi.
 
 16:10 croni **darhol post qilmaydi**: `waitForNextCbuRates()` API'dagi `Date`
 bugungidan keyingi sanaga o'zgarguncha har 5 daqiqada tekshirib kutadi

@@ -513,24 +513,21 @@ export class TaskServiceService {
 
         while (Date.now() < deadline) {
             try {
-                const all = await fetchCbuRates();
-                const usd = all.find((r) => r.Ccy === 'USD');
-                const dateKey = usd ? this.cbuDateKey(usd.Date) : null;
+                const found = await this.findNextPublishedCbuRates(todayKey);
 
-                if (dateKey && dateKey > todayKey) {
+                if (found) {
+                    const usd = found.all.find((r) => r.Ccy === 'USD');
                     console.log(
                         `[CBU] Yangi kurs chiqdi: ${usd.Date} (USD ${usd.Rate}, ${usd.Diff})`,
                     );
                     return {
                         effectiveDate: usd.Date,
-                        rates: this.toCbuScreenRates(all),
+                        rates: this.toCbuScreenRates(found.all),
                     };
                 }
 
                 if (!logged) {
-                    console.log(
-                        `[CBU] Hali eski kurs turibdi (${usd?.Date ?? '?'}), kutilyapti...`,
-                    );
+                    console.log('[CBU] Yangi kurs hali chiqmagan, kutilyapti...');
                     logged = true;
                 }
             } catch (err) {
@@ -541,6 +538,36 @@ export class TaskServiceService {
             }
 
             await this.sleepMs(TaskServiceService.CBU_POLL_INTERVAL_MS);
+        }
+
+        return null;
+    }
+
+    /**
+     * Keyingi kunlarni ketma-ket so'rab, bugungidan keyingi sanaga tegishli
+     * e'lon qilingan kursni qidiradi.
+     *
+     * Nega sikl kerak: juma kuni e'lon qilinadigan kurs DUSHANBAga tegishli
+     * (shanba/yakshanbaga alohida kurs belgilanmaydi). Shanbani so'rasak API
+     * jumaning kursini qaytaradi — ya'ni "yangi emas". Shuning uchun bir necha
+     * kunni sinab ko'ramiz; bayram kunlari ham shu tarzda o'tib ketiladi.
+     */
+    private async findNextPublishedCbuRates(
+        todayKey: string,
+    ): Promise<{ all: CbuRate[] } | null> {
+        for (let offset = 1; offset <= 4; offset++) {
+            const target = new Date();
+            target.setDate(target.getDate() + offset);
+            const iso = target
+                .toLocaleDateString('en-CA', { timeZone: 'Asia/Tashkent' });
+
+            const all = await fetchCbuRates({ date: iso });
+            const usd = all.find((r) => r.Ccy === 'USD');
+            const dateKey = usd ? this.cbuDateKey(usd.Date) : null;
+
+            if (dateKey && dateKey > todayKey) {
+                return { all };
+            }
         }
 
         return null;
