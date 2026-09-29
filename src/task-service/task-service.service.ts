@@ -33,7 +33,7 @@ import { fetchTengeBankRates } from 'src/rates/tengebank';
 import { generateBestRatesImage } from 'src/rates/utils/best-5';
 import { generateRatesImageAllCurrencies } from 'src/rates/utils/enhanced_currency_generator';
 import { Bank, Currency } from 'src/rates/utils/enums';
-import { fetchXbuzOfficeRatesPptr } from 'src/rates/xb';
+import { fetchXbuzOfficeRates } from 'src/rates/xb';
 import { Rate } from 'src/users/entities/rates.entity';
 import { Telegraf } from 'telegraf';
 import { In, Not, Repository } from 'typeorm';
@@ -2579,7 +2579,7 @@ $ 1 AQSh dollari
 
     async loading_xb() {
         try {
-            const { office } = await fetchXbuzOfficeRatesPptr();
+            const { office } = await fetchXbuzOfficeRates();
             // office = { USD:{sell,buy}, GBP:{sell,buy}, CHF:{sell,buy}, EUR:{sell,buy}, KZT:{sell,buy}, JPY:{sell,buy} }
 
             const saveOne = async (

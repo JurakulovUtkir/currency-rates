@@ -1,95 +1,93 @@
-// xbuz.puppeteer.ts
-import puppeteer, { Browser } from 'puppeteer';
+// xb.ts — XALQ BANKI (xb.uz)
+//
+// Ilgari bu scraper puppeteer bilan sahifani ochib, hidratsiyadan keyin
+// DOM'dan o'qirdi. Sayt Next.js'da qayta yozilgani uchun bu og'ir va
+// ishonchsiz edi — prodda muntazam `net::ERR_TIMED_OUT` berardi.
+//
+// Sahifaning o'zi kurslarni quyidagi API'dan oladi, shuning uchun to'g'ridan
+// to'g'ri o'shani so'raymiz: brauzer ham, hidratsiyani kutish ham kerak emas.
 
 export type OfficeRate = { sell: number | null; buy: number | null };
 export type Office = Record<string, OfficeRate>;
 
-const toNum = (t?: string | null) => {
-    if (!t) return null;
-    const n = parseInt(t.replace(/\s+/g, '').trim(), 10);
-    return Number.isFinite(n) ? n : null;
+/** API javobining kalitlari — valyutaning raqamli (ISO 4217) kodlari */
+const CODE_TO_CCY: Record<string, string> = {
+    '840': 'USD',
+    '978': 'EUR',
+    '643': 'RUB',
+    '398': 'KZT',
 };
 
-export async function fetchXbuzOfficeRatesPptr(): Promise<{
+type DayRate = { selling?: string | null; buying?: string | null };
+type ApiCurrency = { data?: Record<string, DayRate> };
+
+const toNum = (t?: string | null): number | null => {
+    if (t == null) return null;
+    const n = Number(String(t).replace(/\s+/g, '').replace(',', '.').trim());
+    // Kurs 0 yoki manfiy bo'lishi mumkin emas — bunday qiymat ma'lumot
+    // yo'qligini bildiradi, bazaga 0 yozib qo'ymaymiz.
+    return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/** 'DD-MM-YYYY' -> solishtirish uchun 'YYYYMMDD' */
+const dateKey = (d: string): string | null => {
+    const m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(d.trim());
+    return m ? `${m[3]}${m[2]}${m[1]}` : null;
+};
+
+export async function fetchXbuzOfficeRates(): Promise<{
     bank: 'XB.UZ';
     source: string;
     fetchedAt: string;
     office: Office;
 }> {
-    const source = 'https://xb.uz/page/valyuta-ayirboshlash';
-    let browser: Browser | null = null;
+    const source =
+        'https://xb.uz/api/v1/external/client/exchange-rate/last-thirty-day?_f=json&_l=uz&include=files&sort=sort';
 
-    try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        });
+    const res = await fetch(source, {
+        headers: {
+            accept: 'application/json',
+            'user-agent': 'Mozilla/5.0 (compatible; RatesBot/1.0)',
+        },
+    });
+    if (!res.ok) throw new Error(`XB.UZ: HTTP ${res.status}`);
 
-        const page = await browser.newPage();
-        await page.setUserAgent(
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
-        );
-        await page.setViewport({ width: 1366, height: 900 });
-        await page.goto(source, {
-            waitUntil: 'domcontentloaded',
-            timeout: 60_000,
-        });
+    const json = (await res.json()) as Record<string, ApiCurrency>;
 
-        // Wait until numbers appear inside the widget (hydration complete)
-        await page.waitForSelector('div.grid.grid-cols-12 p.font-roboto', {
-            timeout: 60_000,
-        });
+    const office: Office = {};
 
-        const office = await page.evaluate(() => {
-            const out: Record<
-                string,
-                { sell: number | null; buy: number | null }
-            > = {};
+    for (const [code, ccy] of Object.entries(CODE_TO_CCY)) {
+        const byDate = json?.[code]?.data;
+        if (!byDate) continue;
 
-            // Each currency block: three 4-col cells => [0]=code, [1]=Selling, [2]=Purchase
-            const rows = document.querySelectorAll<HTMLDivElement>(
-                'div.grid.grid-cols-12.mb-6 > div.col-span-12.md\\:col-span-6.mb-6',
-            );
+        // API oxirgi 30 kunni qaytaradi; bizga eng so'nggi sana kerak.
+        // Kalitlar tartibiga ishonmaymiz, sanani o'zi bo'yicha tanlaymiz.
+        let latest: { key: string; rate: DayRate } | null = null;
+        for (const [day, rate] of Object.entries(byDate)) {
+            const k = dateKey(day);
+            if (!k) continue;
+            if (!latest || k > latest.key) latest = { key: k, rate };
+        }
+        if (!latest) continue;
 
-            const parseIntSafe = (t?: string | null) => {
-                if (!t) return null;
-                const n = parseInt(t.replace(/\s+/g, '').trim(), 10);
-                return Number.isFinite(n) ? n : null;
-            };
-
-            rows.forEach((row) => {
-                const cells = row.querySelectorAll<HTMLDivElement>(
-                    'div.col-span-4.flex.items-center',
-                );
-                if (cells.length < 3) return;
-
-                const code =
-                    cells[0]
-                        ?.querySelector('h4 strong')
-                        ?.textContent?.trim()
-                        .toUpperCase() || '';
-                if (!code) return;
-
-                const sellText =
-                    cells[1]?.querySelector('p')?.textContent || '';
-                const buyText = cells[2]?.querySelector('p')?.textContent || '';
-
-                out[code] = {
-                    sell: parseIntSafe(sellText),
-                    buy: parseIntSafe(buyText),
-                };
-            });
-
-            return out;
-        });
-
-        return {
-            bank: 'XB.UZ',
-            source,
-            fetchedAt: new Date().toISOString(),
-            office,
+        office[ccy] = {
+            sell: toNum(latest.rate.selling),
+            buy: toNum(latest.rate.buying),
         };
-    } finally {
-        await browser?.close().catch(() => {});
     }
+
+    // Bo'sh natijani jimgina qaytarish eng yomon holat: loader uni saqlaydi,
+    // log "muvaffaqiyat" deb yozadi, bank esa rasmdan bildirmay yo'qoladi.
+    if (Object.keys(office).length === 0) {
+        throw new Error(
+            'XB.UZ: API dan birorta ham valyuta o\'qilmadi — javob tuzilishi o\'zgargan bo\'lishi mumkin',
+        );
+    }
+
+    return {
+        bank: 'XB.UZ',
+        source,
+        fetchedAt: new Date().toISOString(),
+        office,
+    };
 }

@@ -132,6 +132,13 @@ rasmdan bildirmay yo'qoladi. GARANTBANK shu tarzda bir necha kun bo'sh
 qiymat yozib yurdi (sayt markup'i o'zgargan edi, eski selektorlar hech
 narsa topmasdi).
 
+**Sahifani scrape qilishdan oldin API bor-yo'qligini tekshiring.** Ko'p
+sayt kurslarni o'zining ochiq API'sidan oladi; brauzerning network
+panelidan uni topish oson. XALQ BANKI shu tarzda puppeteer'dan
+`https://xb.uz/api/v1/external/client/exchange-rate/last-thirty-day`
+so'roviga ko'chirildi: 60 soniyalik timeout o'rniga ~400 ms, hidratsiyani
+kutish yo'q, DOM o'zgarishiga bog'liqlik yo'q.
+
 **Bir sahifada bir nechta kurs jadvali bo'lishi mumkin.** GARANTBANK'da
 uchta tab bor — "Kassada", "Ilovada", "Bankomatda" — va kurslari har xil,
 lekin uchalasi bitta HTML ichida keladi. Bizga kassadagi (ofis) kurs
