@@ -159,8 +159,12 @@ export class TaskServiceService {
     // shared helper
     private mapRates(usdRates: Rate[]) {
         const fmt = (v: unknown) => {
+            // Number(null) === 0 — shuning uchun null/bo'sh qiymat oldindan
+            // ajratiladi, aks holda kursi yo'q bank rasmda "0.00" bo'lib
+            // chiqadi. Kurs 0 yoki manfiy bo'lishi mumkin emas.
+            if (v === null || v === undefined || v === '') return '-';
             const n = Number(v);
-            return Number.isFinite(n) ? n.toFixed(2) : '-';
+            return Number.isFinite(n) && n > 0 ? n.toFixed(2) : '-';
         };
 
         return usdRates.map((r) => ({
@@ -233,8 +237,12 @@ export class TaskServiceService {
         theme?: 'light' | 'dark' | 'kommers',
     ) {
         const fmt = (v: unknown) => {
+            // Number(null) === 0 — shuning uchun null/bo'sh qiymat oldindan
+            // ajratiladi, aks holda kursi yo'q bank rasmda "0.00" bo'lib
+            // chiqadi. Kurs 0 yoki manfiy bo'lishi mumkin emas.
+            if (v === null || v === undefined || v === '') return '-';
             const n = Number(v);
-            return Number.isFinite(n) ? n.toFixed(2) : '-';
+            return Number.isFinite(n) && n > 0 ? n.toFixed(2) : '-';
         };
 
         try {

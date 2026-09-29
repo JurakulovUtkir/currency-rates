@@ -168,6 +168,29 @@ puppeteer ishlamaydi.
 - Yangi caption matni qo'shsangiz, **ikkala tilga ham** qo'shing.
 - Bot scene'laridagi ba'zi matnlar hali inglizcha — bu qarz, namuna emas.
 
+## Kurs qiymatlarini o'qishda tuzoq
+
+`Number(null) === 0`. Shuning uchun `Number.isFinite(Number(v))` tekshiruvi
+kursi yo'q bankni **0 so'm** deb ko'rsatib qo'yadi — best-5 rasmida u "eng
+past sotish" ro'yxatini boshlab turadi. Bir marta prodda shunday bo'lgan
+(GARANTBANK, bazada `sell=null`, rasmda `0`).
+
+Kursni raqamga o'girayotgan har bir joyda null/bo'sh qiymat **oldindan**
+ajratilishi va natija **musbat** ekani tekshirilishi shart:
+
+```ts
+if (v === null || v === undefined || v === '') return undefined;
+const n = Number(v);
+return Number.isFinite(n) && n > 0 ? n : undefined;
+```
+
+Hozir shunday qilingan joylar: `best-5.ts` va
+`enhanced_currency_generator.ts` dagi `num()`, hamda
+`task-service.service.ts` dagi ikkita `fmt()`.
+
+Bazada haqiqiy nollar ham uchraydi (scraperlar 0 yozib qo'ygan) — ular ham
+shu tekshiruv bilan ushlanadi.
+
 ## Bilib qo'yish kerak
 
 - `uzrvb.uz/GetCallAuctionInfo.php` — **o'lik**, `07.10.2025` sanasida qotib

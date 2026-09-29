@@ -102,8 +102,15 @@ function groupByCurrency(data: Rate[]) {
 }
 
 function num(v: unknown) {
+    // null / undefined / bo'sh satr -> ma'lumot yo'q.
+    // Number(null) === 0 bo'lgani uchun oddiy Number() tekshiruvi yetarli emas:
+    // kursi yo'q bank rasmda "0" bo'lib chiqib, "eng past sotish" ro'yxatini
+    // boshlab turardi.
+    if (v === null || v === undefined || v === '') return undefined;
     const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
+    // Valyuta kursi 0 yoki manfiy bo'lishi mumkin emas — bunday qiymat
+    // ma'lumot yo'qligini bildiradi, ko'rsatilmaydi.
+    return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 export async function generateRatesImageAllCurrencies(
