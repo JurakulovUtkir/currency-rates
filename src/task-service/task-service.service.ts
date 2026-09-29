@@ -157,6 +157,61 @@ export class TaskServiceService {
     }
 
     // shared helper
+    /**
+     * Kurs qiymatini normallashtiradi.
+     *
+     * Banklar "bu valyuta bilan ishlamaymiz" degan holatni har xil ifodalaydi:
+     * DAVRBANK "0,00", AGROBANK/SQB 0, KDB "N/A", ASAKABANK "-". Hammasi bir
+     * xil ma'noni bildiradi, shuning uchun bitta joyda null ga keltiriladi —
+     * aks holda bazaga 0 tushib, rasmda "0 so'm" bo'lib chiqadi.
+     */
+    private rateOrNull(v: unknown): string | null {
+        if (v === null || v === undefined) return null;
+        const n = Number(String(v).replace(/\s+/g, '').replace(',', '.').trim());
+        return Number.isFinite(n) && n > 0 ? String(n) : null;
+    }
+
+    /**
+     * Bitta (bank, valyuta) qatorini yozadi.
+     *
+     * Ikkala tomon ham yo'q bo'lsa qator o'chiriladi — bank bu valyuta bilan
+     * ishlamaydi degani, uni rasmda ko'rsatishning ma'nosi yo'q. Bank xizmatni
+     * qayta boshlasa qator o'zi tiklanadi.
+     */
+    private async saveRate(
+        bank: Bank,
+        currency: string,
+        raw: { buy?: unknown; sell?: unknown },
+        label?: string,
+    ): Promise<void> {
+        const buy = this.rateOrNull(raw.buy);
+        const sell = this.rateOrNull(raw.sell);
+
+        if (buy === null && sell === null) {
+            const removed = await this.ratesRepository.delete({
+                currency,
+                bank,
+            });
+            if (removed.affected) {
+                console.warn(
+                    `[${label ?? bank}] ${currency} kursi e'lon qilinmagan — eski qator o'chirildi.`,
+                );
+            }
+            return;
+        }
+
+        const existing = await this.ratesRepository.findOneBy({
+            currency,
+            bank,
+        });
+
+        if (existing) {
+            await this.ratesRepository.update(existing.id, { buy, sell });
+        } else {
+            await this.ratesRepository.save({ currency, bank, buy, sell });
+        }
+    }
+
     private mapRates(usdRates: Rate[]) {
         const fmt = (v: unknown) => {
             // Number(null) === 0 — shuning uchun null/bo'sh qiymat oldindan
@@ -1505,75 +1560,32 @@ $ 1 AQSh dollari
 
     async loading_davrbank() {
         try {
-            const data = await getDavrbankRates(); // Assuming this is defined
+            const data = await getDavrbankRates();
 
-            // Filter to get "bank" source rates only
+            // Saytda bir nechta manba bor (bank / legal / mobile) —
+            // bizga kassadagi ("bank") kurs kerak.
             const bankRates = data.filter((rate) => rate.source === 'bank');
 
-            // Process USD
-            const usd = bankRates.find((rate) => rate.currency === 'USD');
-            if (usd) {
-                const usdData = {
-                    currency: Currency.USD, // Assuming your Currency enum contains 'USD'
-                    bank: Bank.DAVRBANK, // Assuming DAVRBANK is a value in the Bank enum
-                    sell: usd.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: usd.buyRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                };
+            const pairs = [
+                ['USD', Currency.USD],
+                ['EUR', Currency.EUR],
+                ['RUB', Currency.RUB],
+            ] as const;
 
-                const existingUsd = await this.ratesRepository.findOneBy({
-                    currency: Currency.USD,
-                    bank: Bank.DAVRBANK,
-                });
+            for (const [code, currency] of pairs) {
+                const r = bankRates.find((rate) => rate.currency === code);
+                // Javobda bu valyuta umuman yo'q bo'lsa tegmaymiz — bu
+                // "xizmat yo'q" emas, nosoz javob bo'lishi mumkin.
+                if (!r) continue;
 
-                if (existingUsd) {
-                    await this.ratesRepository.update(existingUsd.id, usdData);
-                } else {
-                    await this.ratesRepository.save(usdData);
-                }
-            }
-
-            // Process EUR
-            const eur = bankRates.find((rate) => rate.currency === 'EUR');
-            if (eur) {
-                const eurData = {
-                    currency: Currency.EUR,
-                    bank: Bank.DAVRBANK,
-                    sell: eur.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: eur.buyRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                };
-
-                const existingEur = await this.ratesRepository.findOneBy({
-                    currency: Currency.EUR,
-                    bank: Bank.DAVRBANK,
-                });
-
-                if (existingEur) {
-                    await this.ratesRepository.update(existingEur.id, eurData);
-                } else {
-                    await this.ratesRepository.save(eurData);
-                }
-            }
-
-            // Process RUB
-            const rub = bankRates.find((rate) => rate.currency === 'RUB');
-            if (rub) {
-                const rubData = {
-                    currency: Currency.RUB,
-                    bank: Bank.DAVRBANK,
-                    sell: rub.sellRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                    buy: rub.buyRate.replace(/\s/g, '').replace(',', '.'), // Keep as string
-                };
-
-                const existingRub = await this.ratesRepository.findOneBy({
-                    currency: Currency.RUB,
-                    bank: Bank.DAVRBANK,
-                });
-
-                if (existingRub) {
-                    await this.ratesRepository.update(existingRub.id, rubData);
-                } else {
-                    await this.ratesRepository.save(rubData);
-                }
+                // DAVRBANK ishlamaydigan valyutani "0,00" deb beradi;
+                // saveRate uni null ga aylantirib, qatorni o'chiradi.
+                await this.saveRate(
+                    Bank.DAVRBANK,
+                    currency,
+                    { buy: r.buyRate, sell: r.sellRate },
+                    'DAVRBANK',
+                );
             }
 
             console.log('Currency rates updated successfully in Davrbank');
@@ -1625,72 +1637,26 @@ $ 1 AQSh dollari
 
     async loading_kdb() {
         try {
-            const data = await getKdbExchangeRates(); // Assuming this function is defined
+            const data = await getKdbExchangeRates();
 
-            // Process USD
-            const usd = data.find((rate) => rate.currency === 'USD');
-            if (usd) {
-                const usdData = {
-                    currency: Currency.USD, // Assuming your Currency enum contains 'USD'
-                    bank: Bank.KDB, // Assuming KDB is a value in the Bank enum
-                    sell: usd.sellRate !== 'N/A' ? usd.sellRate : null, // If sellRate is 'N/A', store as null
-                    buy: usd.buyRate !== 'N/A' ? usd.buyRate : null, // If buyRate is 'N/A', store as null
-                };
+            const pairs = [
+                ['USD', Currency.USD],
+                ['EUR', Currency.EUR],
+                ['RUB', Currency.RUB],
+            ] as const;
 
-                const existingUsd = await this.ratesRepository.findOneBy({
-                    currency: Currency.USD,
-                    bank: Bank.KDB,
-                });
+            for (const [code, currency] of pairs) {
+                const r = data.find((rate) => rate.currency === code);
+                if (!r) continue;
 
-                if (existingUsd) {
-                    await this.ratesRepository.update(existingUsd.id, usdData);
-                } else {
-                    await this.ratesRepository.save(usdData);
-                }
-            }
-
-            // Process EUR
-            const eur = data.find((rate) => rate.currency === 'EUR');
-            if (eur) {
-                const eurData = {
-                    currency: Currency.EUR,
-                    bank: Bank.KDB,
-                    sell: eur.sellRate !== 'N/A' ? eur.sellRate : null,
-                    buy: eur.buyRate !== 'N/A' ? eur.buyRate : null,
-                };
-
-                const existingEur = await this.ratesRepository.findOneBy({
-                    currency: Currency.EUR,
-                    bank: Bank.KDB,
-                });
-
-                if (existingEur) {
-                    await this.ratesRepository.update(existingEur.id, eurData);
-                } else {
-                    await this.ratesRepository.save(eurData);
-                }
-            }
-
-            // Process RUB
-            const rub = data.find((rate) => rate.currency === 'RUB');
-            if (rub) {
-                const rubData = {
-                    currency: Currency.RUB,
-                    bank: Bank.KDB,
-                    sell: rub.sellRate !== 'N/A' ? rub.sellRate : null,
-                    buy: rub.buyRate !== 'N/A' ? rub.buyRate : null,
-                };
-
-                const existingRub = await this.ratesRepository.findOneBy({
-                    currency: Currency.RUB,
-                    bank: Bank.KDB,
-                });
-
-                if (existingRub) {
-                    await this.ratesRepository.update(existingRub.id, rubData);
-                } else {
-                    await this.ratesRepository.save(rubData);
-                }
+                // KDB ishlamaydigan valyutani "N/A" deb beradi; saveRate uni
+                // null ga aylantirib, qatorni o'chiradi.
+                await this.saveRate(
+                    Bank.KDB,
+                    currency,
+                    { buy: r.buyRate, sell: r.sellRate },
+                    'KDB',
+                );
             }
 
             console.log('Currency rates updated successfully in KDB');
@@ -1939,74 +1905,28 @@ $ 1 AQSh dollari
 
     async loading_agrobank() {
         try {
-            const data = await getAgrobankExchangeRates(); // Fetch data from Agrobank
+            const data = await getAgrobankExchangeRates();
 
-            // Filter to get first occurrences of USD, EUR, and RUB
-            const usd = data.find((rate) => rate.alpha3 === 'USD');
-            const eur = data.find((rate) => rate.alpha3 === 'EUR');
-            const rub = data.find((rate) => rate.alpha3 === 'RUB');
+            const pairs = [
+                ['USD', Currency.USD],
+                ['EUR', Currency.EUR],
+                ['RUB', Currency.RUB],
+            ] as const;
 
-            // Process USD
-            if (usd) {
-                const usdData = {
-                    currency: Currency.USD, // Assuming Currency enum has USD
-                    bank: Bank.AGROBANK, // Assuming AGROBANK is a value in the Bank enum
-                    sell: usd.sale,
-                    buy: usd.buy,
-                };
+            for (const [code, currency] of pairs) {
+                // API bitta valyutani bir necha marta qaytaradi (turli
+                // kanallar uchun) — birinchisi kassadagi kurs.
+                const r = data.find((rate) => rate.alpha3 === code);
+                if (!r) continue;
 
-                const existingUsd = await this.ratesRepository.findOneBy({
-                    currency: Currency.USD,
-                    bank: Bank.AGROBANK,
-                });
-
-                if (existingUsd) {
-                    await this.ratesRepository.update(existingUsd.id, usdData);
-                } else {
-                    await this.ratesRepository.save(usdData);
-                }
-            }
-
-            // Process EUR
-            if (eur) {
-                const eurData = {
-                    currency: Currency.EUR,
-                    bank: Bank.AGROBANK,
-                    sell: eur.sale,
-                    buy: eur.buy,
-                };
-
-                const existingEur = await this.ratesRepository.findOneBy({
-                    currency: Currency.EUR,
-                    bank: Bank.AGROBANK,
-                });
-
-                if (existingEur) {
-                    await this.ratesRepository.update(existingEur.id, eurData);
-                } else {
-                    await this.ratesRepository.save(eurData);
-                }
-            }
-
-            // Process RUB
-            if (rub) {
-                const rubData = {
-                    currency: Currency.RUB,
-                    bank: Bank.AGROBANK,
-                    sell: rub.sale,
-                    buy: rub.buy,
-                };
-
-                const existingRub = await this.ratesRepository.findOneBy({
-                    currency: Currency.RUB,
-                    bank: Bank.AGROBANK,
-                });
-
-                if (existingRub) {
-                    await this.ratesRepository.update(existingRub.id, rubData);
-                } else {
-                    await this.ratesRepository.save(rubData);
-                }
+                // AGROBANK rublni sotadi, lekin sotib olmaydi: buy = 0.
+                // saveRate uni null qiladi, sell esa saqlanib qoladi.
+                await this.saveRate(
+                    Bank.AGROBANK,
+                    currency,
+                    { buy: r.buy, sell: r.sale },
+                    'AGROBANK',
+                );
             }
 
             console.log('Currency rates updated successfully in Agrobank');
@@ -2643,56 +2563,24 @@ $ 1 AQSh dollari
                 usd: Currency.USD,
                 eur: Currency.EUR,
                 rub: Currency.RUB,
-                // gbp: Currency.GBP,
-                // chf: Currency.CHF,
-                // jpy: Currency.JPY,
             };
 
             for (const [k, rec] of Object.entries(office)) {
-                const code = map[k.toLowerCase()];
-                if (!code || !rec) continue;
+                const currency = map[k.toLowerCase()];
+                if (!currency || !rec) continue;
 
                 // Markaziy bank kursiga (rec.cb) qaytish yo'q — u rasmda
-                // SQB ning o'z kursi bo'lib ko'rinardi.
-                const buyNum = rec.buy ?? null;
-                const sellNum = rec.sell ?? null;
-
-                if (buyNum == null && sellNum == null) {
-                    const removed = await this.ratesRepository.delete({
-                        currency: code,
-                        bank: Bank.SQB,
-                    });
-                    if (removed.affected) {
-                        console.warn(
-                            `[SQB] ${code} kursi e'lon qilinmagan — eski qator o'chirildi.`,
-                        );
-                    }
-                    continue;
-                }
-
-                const row = {
-                    currency: code,
-                    bank: Bank.SQB,
-                    buy: buyNum != null ? String(buyNum) : null,
-                    sell: sellNum != null ? String(sellNum) : null,
-                } as const;
-
-                const existing = await this.ratesRepository.findOneBy({
-                    currency: code,
-                    bank: Bank.SQB,
-                });
-
-                if (existing) {
-                    // update() ishlatiladi: save() qiymat o'zgarmasa UPDATE
-                    // yubormaydi va updated_at qotib qoladi.
-                    await this.ratesRepository.update(existing.id, {
-                        buy: row.buy,
-                        sell: row.sell,
-                    });
-                } else {
-                    await this.ratesRepository.save(row);
-                }
+                // SQB ning o'z kursi bo'lib ko'rinardi. 0 qiymat ham
+                // saveRate ichida null ga aylanadi (SQB rubl sotib olmaydi:
+                // buy = 0 deb beradi).
+                await this.saveRate(
+                    Bank.SQB,
+                    currency,
+                    { buy: rec.buy, sell: rec.sell },
+                    'SQB',
+                );
             }
+            // Muvaffaqiyat log'ini fetchSqbExchangeRates() ning o'zi yozadi.
         } catch (err) {
             console.error('[SQB] load failed:', err);
         }

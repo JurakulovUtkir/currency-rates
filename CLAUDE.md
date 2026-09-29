@@ -126,6 +126,23 @@ qilayotgan kursni ko'rsatadi va aynan shu xatoga olib kelgan edi.
 4. `loading_banks()` ichidagi ro'yxatga qo'shing — **aks holda metod yozilib
    ham hech qachon chaqirilmaydi** (hozir `loading_mkbank()` shu holatda).
 
+**Yangi loader `saveRate()` dan foydalansin.** U kurs qiymatini
+normallashtiradi va qoidani bitta joyda ushlab turadi:
+
+```ts
+await this.saveRate(Bank.X, Currency.USD, { buy: r.buy, sell: r.sell }, 'X');
+```
+
+Banklar "bu valyuta bilan ishlamaymiz" degan holatni har xil ifodalaydi —
+DAVRBANK `"0,00"`, AGROBANK/SQB `0`, KDB `"N/A"`, ASAKABANK `"-"` —
+hammasi `rateOrNull()` da null ga keltiriladi. Ikkala tomon ham null
+bo'lsa qator o'chiriladi; bank xizmatni qayta boshlasa qator o'zi
+tiklanadi. Faqat bir tomoni bo'lsa (masalan AGROBANK rublni sotadi, lekin
+sotib olmaydi) o'sha tomon saqlanadi.
+
+Javobda valyuta **umuman yo'q** bo'lsa qatorga tegmang — bu "xizmat yo'q"
+emas, nosoz javob bo'lishi mumkin.
+
 **Scraper hech narsa topolmasa xato tashlasin.** Bo'sh natija qaytarish
 eng yomon holat: loader uni saqlaydi, log "saved" deb yozadi, bank esa
 rasmdan bildirmay yo'qoladi. GARANTBANK shu tarzda bir necha kun bo'sh
