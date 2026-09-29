@@ -126,6 +126,18 @@ qilayotgan kursni ko'rsatadi va aynan shu xatoga olib kelgan edi.
 4. `loading_banks()` ichidagi ro'yxatga qo'shing — **aks holda metod yozilib
    ham hech qachon chaqirilmaydi** (hozir `loading_mkbank()` shu holatda).
 
+**Scraper hech narsa topolmasa xato tashlasin.** Bo'sh natija qaytarish
+eng yomon holat: loader uni saqlaydi, log "saved" deb yozadi, bank esa
+rasmdan bildirmay yo'qoladi. GARANTBANK shu tarzda bir necha kun bo'sh
+qiymat yozib yurdi (sayt markup'i o'zgargan edi, eski selektorlar hech
+narsa topmasdi).
+
+**Bir sahifada bir nechta kurs jadvali bo'lishi mumkin.** GARANTBANK'da
+uchta tab bor — "Kassada", "Ilovada", "Bankomatda" — va kurslari har xil,
+lekin uchalasi bitta HTML ichida keladi. Bizga kassadagi (ofis) kurs
+kerak, shuning uchun selektor tab paneliga cheklangan. Selektorni
+`.exchange-table-item` ga qoldirsangiz uchala tab aralashib ketadi.
+
 ⚠️ Bankni ro'yxatdan olib tashlash yetarli emas: uning eski qatori `rates`
 jadvalida qolib, rasmga tushaverdi. Kodda hech qanday DELETE yo'q.
 
