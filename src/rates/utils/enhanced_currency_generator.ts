@@ -85,8 +85,16 @@ function groupByCurrency(data: Rate[]) {
         if (!ccy) continue;
         if (!g.has(ccy)) g.set(ccy, { banks: [] });
         const bucket = g.get(ccy)!;
-        if (isCbu(r.bank)) bucket.cbu = r;
-        else bucket.banks.push(r);
+        if (isCbu(r.bank)) {
+            bucket.cbu = r;
+            continue;
+        }
+
+        // Kursi umuman yo'q bankni ko'rsatmaymiz — bo'sh "- / -" kartochka
+        // faqat joy egallaydi. Bank kursni qayta e'lon qilsa o'zi qaytadi.
+        if (num(r.buy) === undefined && num(r.sell) === undefined) continue;
+
+        bucket.banks.push(r);
     }
     const ordered = Array.from(g.entries()).sort((a, b) => {
         const ia = PREFERRED_CCY_ORDER.indexOf(a[0]);
